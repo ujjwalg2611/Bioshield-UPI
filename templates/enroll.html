@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BioShield – Biometric Enrollment</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+
+<style>
+/* ── Titanium & Aurora Theme ── */
+:root {
+    --bg-void: #050505;
+    --bg-titanium: #111216;
+    --bg-glass: rgba(17, 18, 22, 0.75);
+    
+    --border-dim: rgba(255, 255, 255, 0.08);
+    --border-bright: rgba(255, 255, 255, 0.15);
+    
+    --text-pure: #ffffff;
+    --text-ash: #a1a1aa;
+    
+    /* Aurora Accents */
+    --aurora-cyan: #06b6d4;
+    --aurora-mint: #10b981;
+    --aurora-amethyst: #8b5cf6;
+    --aurora-rose: #f43f5e;
+    
+    --font-ui: 'Outfit', sans-serif;
+    --font-code: 'Fira Code', monospace;
+}
+
+body {
+    background-color: var(--bg-void);
+    color: var(--text-pure);
+    font-family: var(--font-ui);
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* High-Tech Grid & Ambient Orb Background */
+body::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: 
+        linear-gradient(var(--border-dim) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border-dim) 1px, transparent 1px);
+    background-size: 40px 40px;
+    z-index: 0;
+    opacity: 0.5;
+}
+
+body::after {
+    content: '';
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(6,182,212,0.15) 0%, rgba(139,92,246,0.1) 40%, transparent 70%);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 0;
+    filter: blur(40px);
+    pointer-events: none;
+}
+
+.enroll-container {
+    width: 100%;
+    max-width: 680px;
+    background: var(--bg-glass);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--border-bright);
+    border-radius: 24px;
+    padding: 48px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    position: relative;
+    z-index: 10;
+    margin: 20px;
+}
+
+/* ── Header ── */
+.brand-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 40px;
+    text-decoration: none;
+}
+
+.brand-icon {
+    width: 52px; height: 52px;
+    background: linear-gradient(135deg, var(--aurora-amethyst), var(--aurora-cyan));
+    border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem; color: #fff;
+    box-shadow: 0 8px 20px rgba(6, 182, 212, 0.3);
+}
+
+.brand-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-pure);
+    letter-spacing: -0.5px;
+    margin: 0;
+}
+
+.brand-subtitle {
+    font-size: 0.95rem;
+    color: var(--text-ash);
+    font-weight: 500;
+    margin: 4px 0 0 0;
+}
+
+/* ── Typing Interface ── */
+.focus-zone {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--border-dim);
+    border-radius: 16px;
+    padding: 32px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+}
+
+.focus-zone::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; width: 4px; height: 100%;
+    background: linear-gradient(to bottom, var(--aurora-cyan), var(--aurora-amethyst));
+}
+
+.phrase-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-ash);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.sample-badge {
+    background: rgba(6, 182, 212, 0.1);
+    color: var(--aurora-cyan);
+    padding: 4px 12px;
+    border-radius: 100px;
+    font-family: var(--font-code);
+    font-size: 0.8rem;
+    border: 1px solid rgba(6, 182, 212, 0.2);
+}
+
+.phrase-box {
+    font-size: 1.25rem;
+    font-family: var(--font-code);
+    color: var(--text-pure);
+    margin-bottom: 24px;
+    line-height: 1.5;
+    opacity: 0.9;
+}
+
+#phraseInput {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid var(--border-bright);
+    padding: 12px 0;
+    font-size: 1.25rem;
+    font-family: var(--font-code);
+    color: var(--aurora-cyan);
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+#phraseInput:focus {
+    outline: none;
+    border-bottom-color: var(--aurora-cyan);
+    box-shadow: 0 10px 10px -10px rgba(6, 182, 212, 0.3);
+}
+
+#phraseInput::placeholder {
+    color: rgba(161, 161, 170, 0.3);
+}
+
+/* ── HUD Restyling ── */
+#biometric-hud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 24px;
+    display: none;
+    animation: fadeIn 0.4s ease;
+}
+
+.hud-item {
+    background: var(--bg-titanium);
+    border: 1px solid var(--border-bright);
+    border-radius: 100px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hud-label {
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-ash);
+    text-transform: uppercase;
+}
+
+.hud-value {
+    font-family: var(--font-code);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-pure);
+}
+
+.hud-unit {
+    font-size: 0.7rem;
+    color: var(--aurora-amethyst);
+    margin-left: 2px;
+}
+
+/* ── Progress Bar ── */
+.progress-container {
+    margin-bottom: 32px;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-ash);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.progress-track {
+    height: 6px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 99px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--aurora-cyan), var(--aurora-amethyst));
+    width: 0%;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 99px;
+    box-shadow: 0 0 10px rgba(139,92,246,0.5);
+}
+
+/* ── Buttons ── */
+.btn {
+    width: 100%;
+    padding: 18px;
+    font-family: var(--font-ui);
+    font-size: 1.05rem;
+    font-weight: 600;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    letter-spacing: 0.5px;
+}
+
+.btn-primary { background: var(--text-pure); color: var(--bg-void); }
+.btn-primary:hover:not(:disabled) { background: #e4e4e7; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255,255,255,0.15); }
+
+.btn-success { background: var(--aurora-mint); color: var(--bg-void); }
+.btn-success:hover:not(:disabled) { background: #059669; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16, 185, 129, 0.25); }
+
+.btn:disabled { opacity: 0.3; cursor: not-allowed; background: var(--bg-titanium); color: var(--text-ash); border: 1px solid var(--border-dim); }
+
+/* ── Alerts ── */
+.alert {
+    padding: 16px; border-radius: 12px; font-size: 0.95rem; font-weight: 500; margin-top: 20px; display: none; backdrop-filter: blur(10px);
+}
+.alert.show { display: block; animation: fadeIn 0.3s ease; }
+.alert-success { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: var(--aurora-mint); }
+.alert-warn    { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: #fcd34d; }
+.alert-error   { background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.2); color: var(--aurora-rose); }
+
+/* Footer Nav */
+.nav-footer { display: flex; justify-content: space-between; margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border-dim); }
+.nav-link { color: var(--text-ash); text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: color 0.2s; }
+.nav-link:hover { color: var(--text-pure); }
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Modal for Face Enrollment ── */
+.modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(5, 5, 5, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    z-index: 1000; align-items: center; justify-content: center;
+}
+.modal-content {
+    background: var(--bg-titanium); border: 1px solid var(--border-bright);
+    border-radius: 24px; padding: 40px; width: 90%; max-width: 460px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+</style>
+</head>
+<body>
+
+<div class="enroll-container">
+    
+    <a href="/dashboard" class="brand-header">
+        <div class="brand-icon">🧬</div>
+        <div>
+            <h1 class="brand-title">Biometric Enrollment</h1>
+            <p class="brand-subtitle">Establish your identity baseline</p>
+        </div>
+    </a>
+
+    <div class="focus-zone">
+        <div class="phrase-label">
+            <span>Target Sequence</span>
+            <span class="sample-badge">Sample <span id="sampleNum">1</span> / 10</span>
+        </div>
+
+        <div id="phrase-box" class="phrase-box">Loading protocol phrase...</div>
+
+        <input type="text" id="phraseInput" placeholder="Start typing here naturally..." autocomplete="off" spellcheck="false">
+
+        <div id="biometric-hud"></div>
+    </div>
+
+    <div class="progress-container">
+        <div class="progress-header">
+            <span>Data Acquisition Phase</span>
+            <span id="sampleCount" style="color: var(--text-pure);">0%</span>
+        </div>
+        <div class="progress-track">
+            <div class="progress-fill" id="progressBar"></div>
+        </div>
+    </div>
+
+    <button class="btn btn-primary" id="captureBtn" disabled>
+        Record Telemetry Sample
+    </button>
+
+    <button class="btn btn-success" id="enrollBtn" style="display:none;">
+        <span id="enrollBtnText">Encrypt Keystroke Profile</span>
+        <span id="enrollSpinner" class="spinner" style="display:none; width:18px; height:18px; border:2px solid rgba(0,0,0,0.2); border-top-color:#000; border-radius:50%; animation:spin 0.8s linear infinite; margin-left:10px;"></span>
+    </button>
+
+    <div id="alertBox" class="alert"></div>
+
+    <div class="nav-footer">
+        <a href="/dashboard" class="nav-link">← Return to Dashboard</a>
+        <a href="/test" class="nav-link">Skip to Lab Test →</a>
+    </div>
+</div>
+
+<div class="modal-overlay" id="enrollFaceModal">
+    <div class="modal-content">
+        <h2 style="font-size:1.6rem; margin:0 0 12px 0; color:var(--text-pure); font-weight:700;">📸 Step 2: Facial DNA</h2>
+        <p style="color:var(--text-ash); font-size:0.95rem; margin-bottom:24px; line-height:1.5;">
+            Position your face in the frame. This secondary biometric vector acts as a fallback for high-risk transactions.
+        </p>
+
+        <div style="border-radius:16px; overflow:hidden; border:2px solid var(--border-dim); margin-bottom:24px; box-shadow: 0 10px 20px rgba(0,0,0,0.3);">
+            <video id="enroll-face-video" autoplay playsinline muted style="width:100%; display:block; background:#000;"></video>
+        </div>
+        <canvas id="enroll-face-canvas" style="display:none;"></canvas>
+
+        <button class="btn btn-primary" id="saveFaceBtn">
+            Capture & Complete Enrollment
+        </button>
+        <div id="faceEnrollAlert" class="alert"></div>
+    </div>
+</div>
+
+<script src="/static/keystroke.js"></script>
+<script>
+// ── Auth guard ──
+if (!BioShieldAPI.getToken()) location.href = '/login';
+
+const PHRASES = [
+  "the quick brown fox jumps over the lazy dog",
+  "secure payment using biometric identity",
+  "keystroke dynamics reveal unique patterns",
+  "my upi transfer is protected by bioshield",
+  "type naturally to train your profile",
+  "neural networks guard each transaction",
+  "behavioral authentication never sleeps",
+  "every key press tells a unique story",
+  "identity verified through typing rhythm",
+  "biometrics are the new password system"
+];
+
+const phraseBox   = document.getElementById('phrase-box');
+const phraseInput = document.getElementById('phraseInput');
+const captureBtn  = document.getElementById('captureBtn');
+const enrollBtn   = document.getElementById('enrollBtn');
+const hudEl       = document.getElementById('biometric-hud');
+const sampleCount = document.getElementById('sampleCount');
+const progressBar = document.getElementById('progressBar');
+const sampleNum   = document.getElementById('sampleNum');
+let phraseIndex   = 0;
+
+let collector = new EnrollmentCollector(10);
+
+collector.init(phraseInput, (done, total) => {
+  const percent = Math.round((done / total) * 100);
+  sampleCount.textContent = `${percent}%`;
+  progressBar.style.width = `${percent}%`;
+  sampleNum.textContent = done < total ? done + 1 : total;
+  
+  if (collector.isComplete()) {
+    enrollBtn.style.display = 'flex';
+    captureBtn.style.display = 'none';
+    phraseInput.disabled = true;
+    phraseInput.value = 'Phase 1 complete. Ready to proceed.';
+    phraseInput.style.borderBottomColor = 'var(--aurora-mint)';
+    phraseInput.style.color = 'var(--aurora-mint)';
+    hudEl.style.display = 'none';
+    clearAlert();
+  } else {
+    loadPhrase();
+  }
+});
+
+function loadPhrase() {
+  phraseIndex = collector.samples.length % PHRASES.length;
+  phraseBox.textContent = PHRASES[phraseIndex];
+  phraseInput.value = '';
+  phraseInput.disabled = false;
+  phraseInput.style.borderBottomColor = 'var(--border-bright)';
+  phraseInput.style.color = 'var(--aurora-cyan)';
+  phraseInput.focus();
+  captureBtn.disabled = true;
+  collector.capture.reset();
+  
+  new BiometricHUD(hudEl, collector.capture);
+  clearAlert();
+}
+
+phraseInput.addEventListener('input', () => {
+    captureBtn.disabled = !collector.capture.isReady();
+
+    const currentText = phraseInput.value.trim();
+    const targetText = PHRASES[phraseIndex];
+    
+    if (currentText === targetText) {
+        phraseInput.style.borderBottomColor = 'var(--aurora-mint)';
+        phraseInput.style.color = 'var(--aurora-mint)';
+        
+        setTimeout(() => {
+            if (!captureBtn.disabled) captureBtn.click();
+        }, 250);
+    } else {
+        phraseInput.style.borderBottomColor = 'var(--aurora-cyan)';
+        phraseInput.style.color = 'var(--aurora-cyan)';
+    }
+});
+
+phraseInput.addEventListener('keyup', (e) => {
+  if (e.key === 'Enter' && !captureBtn.disabled) {
+      captureBtn.click();
+  }
+});
+
+captureBtn.addEventListener('click', () => {
+  const recorded = collector.recordSample();
+  if (!recorded) {
+    showAlert('Pattern too short. Please type the full phrase.', 'warn');
+  }
+});
+
+// ── Step 1: Keystroke Enrollment ──
+enrollBtn.addEventListener('click', async () => {
+  document.getElementById('enrollBtnText').textContent = 'Encrypting...';
+  document.getElementById('enrollSpinner').style.display = 'inline-block';
+  enrollBtn.disabled = true;
+
+  try {
+    // Save keystrokes first
+    await BioShieldAPI.enroll({ samples: collector.getSamples() });
+    showAlert('Keystroke DNA established.', 'success');
+    
+    // Smooth transition to Face Modal
+    setTimeout(async () => {
+        document.getElementById('enrollFaceModal').style.display = 'flex';
+        
+        // Boot up Camera
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            document.getElementById('enroll-face-video').srcObject = stream;
+        } catch (camErr) {
+            showAlert('Camera access is required to complete Step 2.', 'error');
+        }
+    }, 800);
+
+  } catch (err) {
+    showAlert(err.error || 'Connection failed. Please retry.', 'error');
+    enrollBtn.disabled = false;
+    document.getElementById('enrollBtnText').textContent = 'Encrypt & Secure Profile';
+    document.getElementById('enrollSpinner').style.display = 'none';
+  }
+});
+
+// ── Step 2: Facial DNA Enrollment ──
+document.getElementById('saveFaceBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('saveFaceBtn');
+    btn.textContent = 'Analyzing Facial Data...';
+    btn.disabled = true;
+
+    const video  = document.getElementById('enroll-face-video');
+    const canvas = document.getElementById('enroll-face-canvas');
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+    // Shutdown camera stream
+    const stream = video.srcObject;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+
+    try {
+        const res = await fetch('/api/enroll-face', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${BioShieldAPI.getToken()}`
+            },
+            body: JSON.stringify({ face_image: imageData })
+        });
+
+        if (!res.ok) throw new Error("Failed to save facial data");
+
+        // Complete & Redirect
+        btn.style.background = 'var(--aurora-mint)';
+        btn.style.color = '#000';
+        btn.textContent = '✓ Profile Fully Secured';
+        setTimeout(() => location.href = '/dashboard', 1200);
+
+    } catch (err) {
+        const faceAlert = document.getElementById('faceEnrollAlert');
+        faceAlert.textContent = "Camera error or server failed to save data.";
+        faceAlert.className = "alert alert-error show";
+        btn.textContent = 'Capture & Complete Enrollment';
+        btn.disabled = false;
+    }
+});
+
+function showAlert(msg, type) {
+  const el = document.getElementById('alertBox');
+  el.textContent = msg;
+  el.className = `alert alert-${type} show`;
+}
+
+function clearAlert() {
+  const el = document.getElementById('alertBox');
+  el.className = 'alert';
+  el.textContent = '';
+}
+
+loadPhrase();
+</script>
+</body>
+</html>

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BioShield – Secure Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+
+<style>
+
+:root {
+    --bg-main: #0b1120;
+    --bg-card: #111827;
+    --bg-elevated: #1f2937;
+    --border: #374151;
+    --text-main: #f3f4f6;
+    --text-muted: #9ca3af;
+    
+    --primary: #0ea5e9;
+    --primary-hover: #0284c7;
+    --success: #10b981;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    
+    --font-sans: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-image: radial-gradient(circle at top left, rgba(14, 165, 233, 0.05), transparent 40%);
+}
+
+.login-container {
+    width: 100%;
+    max-width: 440px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    margin: 20px;
+}
+
+
+.brand-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 32px;
+    text-decoration: none;
+}
+
+.brand-icon {
+    width: 48px; height: 48px;
+    background: linear-gradient(135deg, var(--primary), #3b82f6);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; color: #fff;
+    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+}
+
+.brand-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.5px;
+    margin: 0;
+}
+
+.brand-subtitle {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin: 4px 0 0 0;
+}
+
+
+.form-group {
+    margin-bottom: 24px;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+input {
+    width: 100%;
+    background: var(--bg-main);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 1rem;
+    font-family: var(--font-mono);
+    color: var(--text-main);
+    transition: all 0.2s;
+    box-sizing: border-box;
+}
+
+input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.1);
+}
+
+
+#biometric-hud {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 24px 0;
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+
+.btn-primary {
+    width: 100%;
+    padding: 14px;
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    background: var(--primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--primary-hover);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ── Alert ── */
+.alert {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: center;
+    display: none;
+}
+.alert.show { display: block; animation: fadeIn 0.3s ease; }
+.alert-success { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: var(--success); }
+.alert-warn    { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: var(--warn); }
+.alert-error   { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+/* ── Bottom Links ── */
+.bottom-links {
+    text-align: center;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.bottom-links a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.bottom-links a:hover {
+    color: var(--primary-hover);
+}
+</style>
+</head>
+<body>
+
+<div class="login-container">
+
+    <a href="/" class="brand-header">
+        <div class="brand-icon">🛡</div>
+        <div>
+            <h1 class="brand-title">BioShield</h1>
+            <p class="brand-subtitle">Enterprise Gateway</p>
+        </div>
+    </a>
+
+    <div style="margin-bottom: 32px;">
+        <h2 style="font-size: 1.4rem; margin: 0 0 6px 0; font-weight: 600;">Secure Authentication</h2>
+        <p style="color: var(--text-muted); margin: 0; font-size: 0.9rem;">Identity verified via continuous keystroke telemetry.</p>
+    </div>
+
+    <form id="loginForm" autocomplete="off">
+        <div class="form-group">
+            <label>User ID / Email</label>
+            <input type="email" id="email" placeholder="identity@bioshield.net" required>
+        </div>
+
+        <div class="form-group">
+            <label style="display: flex; justify-content: space-between;">
+                <span>Passphrase</span>
+                <span style="color: var(--primary); font-weight: 500;">Type naturally</span>
+            </label>
+            <input type="password" id="password" placeholder="Enter passphrase" required autocomplete="off">
+        </div>
+
+        <div id="biometric-hud"></div>
+
+        <button type="submit" class="btn-primary" id="loginBtn">
+            <span id="btnText">Authenticate Session</span>
+            <span id="btnSpinner" class="spinner" style="display:none; width:16px; height:16px; border-width:2px;"></span>
+        </button>
+    </form>
+
+    <div id="alertBox" class="alert"></div>
+
+    <div class="bottom-links">
+        New Operator? <a href="/signup">Provision Account</a>
+    </div>
+</div>
+
+<script src="/static/keystroke.js"></script>
+<script>
+// ── Redirect if already logged in ──
+if (BioShieldAPI.getToken() && BioShieldAPI.getUser()) {
+    location.href = '/dashboard';
+}
+
+const capture = new KeystrokeCapture({ minKeys: 5 });
+const pwdInput = document.getElementById('password');
+const hudContainer = document.getElementById('biometric-hud');
+
+capture.attach(pwdInput);
+
+capture.onUpdate = () => {
+    if(hudContainer.style.display !== 'block') {
+         hudContainer.style.display = 'block';
+    }
+    new BiometricHUD(hudContainer, capture);
+};
+
+function showAlert(msg, type) {
+    const el = document.getElementById('alertBox');
+    el.textContent = msg;
+    el.className = `alert alert-${type} show`;
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const btn = document.getElementById('loginBtn');
+    const btnText = document.getElementById('btnText');
+    const btnSpinner = document.getElementById('btnSpinner');
+
+    btnText.textContent = 'Analyzing Telemetry...';
+    btnSpinner.style.display = 'inline-block';
+    btn.disabled = true;
+
+    try {
+        const data = await BioShieldAPI.login({
+            email: document.getElementById('email').value.trim(),
+            password: document.getElementById('password').value,
+            keystroke_data: capture.getData()
+        });
+
+        BioShieldAPI.setToken(data.token);
+        BioShieldAPI.setUser(data.user);
+
+        const risk = data.risk || {};
+
+        if (risk.decision === 'BLOCK') {
+            showAlert(`Access Denied: Anomalous telemetry detected (${Math.round((risk.score||0)*100)}% risk variance).`, 'error');
+            btn.disabled = false;
+            btnText.textContent = 'Authenticate Session';
+            btnSpinner.style.display = 'none';
+            return;
+        }
+
+        if (risk.decision === 'OTP_REQUIRED') {
+            showAlert('High variance detected. Initiating secondary protocol (OTP).', 'warn');
+            setTimeout(() => location.href = '/otp', 1600); // Assuming you build an OTP page later
+            return;
+        }
+
+        showAlert('DNA verified. Establishing secure connection...', 'success');
+        setTimeout(() => location.href = '/dashboard', 1200);
+
+    } catch (err) {
+        showAlert(err.error || 'Connection failed. Verify credentials.', 'error');
+        btn.disabled = false;
+        btnText.textContent = 'Authenticate Session';
+        btnSpinner.style.display = 'none';
+    }
+});
+</script>
+</body>
+</html>

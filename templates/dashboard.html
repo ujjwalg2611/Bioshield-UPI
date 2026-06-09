@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BioShield – Secure Operations Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+
+<style>
+/* ── Deep Indigo & Cyan Enterprise Theme ── */
+:root {
+    /* Rich Indigo/Navy Backgrounds instead of Black */
+    --bg-base: #0a0f1d;
+    --bg-surface: #12192b;
+    --bg-card: rgba(24, 34, 60, 0.65);
+    --bg-card-hover: rgba(32, 45, 80, 0.85);
+    
+    /* Crisp Borders & Glass */
+    --border-light: rgba(148, 163, 184, 0.15);
+    --border-focus: rgba(6, 182, 212, 0.4);
+    --glass-blur: blur(24px);
+    
+    /* Typography Colors */
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-tertiary: #94a3b8;
+    
+    /* Vibrant FinTech Accents */
+    --accent-blue: #06b6d4; /* Vivid Cyan */
+    --accent-blue-glow: rgba(6, 182, 212, 0.25);
+    --accent-green: #10b981; /* Mint Green */
+    --accent-green-glow: rgba(16, 185, 129, 0.25);
+    --accent-amber: #f59e0b;
+    --accent-amber-glow: rgba(245, 158, 11, 0.25);
+    --accent-red: #f43f5e;
+    --accent-red-glow: rgba(244, 63, 94, 0.25);
+    --accent-purple: #6366f1; /* Deep Indigo */
+    
+    /* Spacing & Radius */
+    --radius-xl: 24px;
+    --radius-lg: 16px;
+    --radius-md: 12px;
+    --radius-sm: 8px;
+    
+    --font-sans: 'Plus Jakarta Sans', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    min-height: 100vh;
+    /* Rich ambient glows replacing the flat black */
+    background-image: 
+        radial-gradient(circle at 10% 0%, rgba(99, 102, 241, 0.15), transparent 40%),
+        radial-gradient(circle at 90% 100%, rgba(6, 182, 212, 0.12), transparent 40%);
+    background-attachment: fixed;
+}
+
+.container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+
+/* ── Floating Glass Header ── */
+.header-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 1rem 1.5rem;
+    background: var(--bg-card);
+    backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-light); border-radius: var(--radius-xl);
+    margin-bottom: 3rem;
+    box-shadow: 0 10px 40px -10px rgba(0,0,0,0.3);
+    position: sticky; top: 1.5rem; z-index: 100;
+}
+
+.brand { display: flex; align-items: center; gap: 14px; text-decoration: none; }
+.brand-icon {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+    border-radius: var(--radius-md);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; color: #fff;
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.4); 
+    border: 1px solid rgba(255,255,255,0.3);
+}
+.brand-text { font-weight: 800; font-size: 1.25rem; letter-spacing: -0.5px; color: var(--text-primary); line-height: 1.1; }
+.brand-sub { font-size: 0.65rem; color: var(--accent-blue); letter-spacing: 1.5px; font-weight: 700; text-transform: uppercase; }
+
+/* ── Navigation ── */
+.nav-menu { display: flex; gap: 8px; }
+.nav-btn {
+    padding: 10px 20px; border-radius: var(--radius-sm);
+    font-size: 0.85rem; font-weight: 600; text-decoration: none;
+    color: var(--text-secondary); background: transparent;
+    border: 1px solid transparent; transition: all 0.3s ease;
+}
+.nav-btn:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.05); border-color: var(--border-light); transform: translateY(-1px); }
+.nav-btn.danger { color: var(--accent-red); }
+.nav-btn.danger:hover { background: var(--accent-red-glow); border-color: rgba(244, 63, 94, 0.3); color: #fff; }
+
+/* ── Hero / Status Section ── */
+.hero-section { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 3rem; gap: 2rem; flex-wrap: wrap; }
+.user-meta h1 { 
+    font-size: 2.8rem; margin: 0 0 4px 0; letter-spacing: -1px; font-weight: 800;
+    background: linear-gradient(to right, #fff, #94a3b8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.upi-id { color: var(--text-secondary); font-family: var(--font-mono); font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+
+/* ── Dynamic Badges ── */
+.badge {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px;
+    font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-mono);
+}
+.badge-success { background: var(--accent-green-glow); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.3); }
+.badge-danger  { background: var(--accent-red-glow); color: var(--accent-red); border: 1px solid rgba(244, 63, 94, 0.3); }
+.badge-warn    { background: var(--accent-amber-glow); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.3); }
+
+/* ── Integrity Core Card ── */
+.integrity-card {
+    background: linear-gradient(145deg, rgba(30,41,59,0.7), rgba(15,23,42,0.8));
+    border: 1px solid var(--border-light); padding: 1.5rem 2rem; border-radius: var(--radius-lg);
+    width: 100%; max-width: 380px; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.3); backdrop-filter: var(--glass-blur);
+}
+.progress-container { height: 8px; background: rgba(0,0,0,0.3); border-radius: 10px; margin-top: 12px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5); }
+.progress-fill { height: 100%; border-radius: 10px; transition: width 1.5s cubic-bezier(0.1, 0, 0.2, 1), background-color 0.5s ease; }
+
+/* ── Stat Cards Grid ── */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-bottom: 3rem; }
+.stat-box {
+    background: var(--bg-card); backdrop-filter: var(--glass-blur); border: 1px solid var(--border-light);
+    padding: 1.5rem; border-radius: var(--radius-lg); display: flex; flex-direction: column; justify-content: space-between;
+    transition: all 0.3s ease; position: relative; overflow: hidden;
+}
+.stat-box:hover { background: var(--bg-card-hover); transform: translateY(-4px); border-color: rgba(255,255,255,0.25); box-shadow: 0 15px 40px -10px rgba(0,0,0,0.4); }
+.stat-box::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; opacity: 0.85; }
+.stat-box.blue::before { background: linear-gradient(90deg, transparent, var(--accent-blue), transparent); }
+.stat-box.green::before { background: linear-gradient(90deg, transparent, var(--accent-green), transparent); }
+.stat-box.orange::before { background: linear-gradient(90deg, transparent, var(--accent-amber), transparent); }
+.stat-box.red::before { background: linear-gradient(90deg, transparent, var(--accent-red), transparent); }
+.stat-label { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 1px; margin-bottom: 8px; }
+.stat-value { font-size: 2.2rem; font-weight: 800; color: var(--text-primary); font-family: var(--font-mono); line-height: 1.2; }
+
+/* ── Main Content Area ── */
+.grid-main { display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; margin-bottom: 3rem; }
+.card { background: var(--bg-card); backdrop-filter: var(--glass-blur); border: 1px solid var(--border-light); border-radius: var(--radius-xl); padding: 2rem; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.3); }
+.card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 2rem; font-weight: 700; font-size: 1.1rem; color: var(--text-primary); border-bottom: 1px solid var(--border-light); padding-bottom: 1rem; }
+
+/* ── DNA Data Rows ── */
+.dna-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px dashed rgba(255,255,255,0.08); }
+.dna-row:last-child { border: none; }
+.dna-label { color: var(--text-secondary); font-size: 0.9rem; font-weight: 500; }
+.dna-value { color: var(--accent-blue); font-family: var(--font-mono); font-weight: 600; font-size: 0.95rem; text-shadow: 0 0 12px var(--accent-blue-glow); }
+
+/* ── Table Styling ── */
+.table-container { background: var(--bg-card); backdrop-filter: var(--glass-blur); border: 1px solid var(--border-light); border-radius: var(--radius-xl); overflow: hidden; }
+.table-header { padding: 1.5rem 2rem; font-weight: 700; font-size: 1.1rem; border-bottom: 1px solid var(--border-light); display: flex; align-items: center; gap: 10px; }
+table { width: 100%; border-collapse: collapse; }
+th { background: rgba(0,0,0,0.25); text-align: left; padding: 1rem 2rem; color: var(--text-tertiary); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+td { padding: 1.25rem 2rem; border-bottom: 1px solid var(--border-light); font-size: 0.9rem; color: var(--text-primary); }
+tr:last-child td { border: none; }
+tr:hover td { background: rgba(255,255,255,0.03); }
+.tx-amount { font-family: var(--font-mono); font-weight: 600; }
+
+/* ── Mermaid Custom Box ── */
+#mermaidContainer { background: rgba(0,0,0,0.25); border-radius: var(--radius-md); padding: 20px; border: 1px inset rgba(255,255,255,0.05); min-height: 250px; display: flex; justify-content: center; align-items: center; }
+
+@media (max-width: 1024px) {
+    .grid-main { grid-template-columns: 1fr; }
+    .hero-section { flex-direction: column; align-items: flex-start; }
+    .integrity-card { max-width: 100%; }
+}
+@media (max-width: 768px) {
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .header-bar { flex-direction: column; gap: 1rem; padding: 1rem; }
+    .nav-menu { width: 100%; justify-content: space-between; }
+    td, th { padding: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+    <header class="header-bar">
+        <a href="/" class="brand">
+            <div class="brand-icon">🛡</div>
+            <div>
+                <div class="brand-text">BioShield</div>
+                <div class="brand-sub">Enterprise Defense</div>
+            </div>
+        </a>
+        <nav class="nav-menu">
+            <a href="/payment" class="nav-btn">New Payment</a>
+            <a href="/test" class="nav-btn">Lab Test</a>
+            <a href="/enroll" class="nav-btn">Update Biometrics</a>
+            <a href="#" class="nav-btn danger" id="logoutBtn">Logout</a>
+        </nav>
+    </header>
+
+    <div class="hero-section">
+        <div class="user-meta">
+            <h1 id="welcomeName">Authenticating...</h1>
+            <div class="upi-id">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                <span id="upiDisplay">Connecting...</span>
+            </div>
+            <div style="margin-top: 16px;" id="statusBadgeContainer">
+                <span class="badge badge-warn">● Evaluating Status</span>
+            </div>
+        </div>
+        
+        <div class="integrity-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-tertiary); letter-spacing: 1px;">SYSTEM INTEGRITY</span>
+                <span id="healthScore" style="font-family: var(--font-mono); font-weight: 800; color: var(--accent-amber);">--%</span>
+            </div>
+            <div class="progress-container">
+                <div id="healthBar" class="progress-fill" style="width: 0%; background: var(--accent-amber);"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-grid" id="statCards">
+        <div class="stat-box blue">
+            <div class="stat-label">Available Balance</div>
+            <div class="stat-value" id="statBalance">₹ ---.--</div>
+        </div>
+        <div class="stat-box green">
+            <div class="stat-label">Cleared Events</div>
+            <div class="stat-value" id="statCleared">-</div>
+        </div>
+        <div class="stat-box orange">
+            <div class="stat-label">Flagged / OTP</div>
+            <div class="stat-value" id="statFlagged">-</div>
+        </div>
+        <div class="stat-box red">
+            <div class="stat-label">Threats Blocked</div>
+            <div class="stat-value" id="statBlocked">-</div>
+        </div>
+    </div>
+
+    <div class="grid-main">
+        <div class="card">
+            <div class="card-header">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                Baseline Profile DNA
+            </div>
+            <div id="profileSection">
+                <p style="color: var(--text-tertiary); font-size: 0.95rem; font-style: italic;">
+                    Decrypting biometric baseline...
+                </p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                Decision Logic Flow
+            </div>
+            <div id="mermaidContainer">
+                <span style="color: var(--text-tertiary); font-size: 0.9rem;">Awaiting event telemetry...</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <div class="table-header">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" color="var(--text-secondary)"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            Recent Activity Ledger
+        </div>
+        <div style="overflow-x: auto;">
+            <table id="txnTable">
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Event Context</th>
+                        <th>Amount</th>
+                        <th>Auth Vector</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody id="txnTableBody">
+                    <tr><td colspan="5" style="text-align:center; color:var(--text-tertiary); padding: 3rem;">Synchronizing ledger...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="/static/keystroke.js"></script>
+<script>
+if (!BioShieldAPI.getToken()) location.href = '/login';
+
+mermaid.initialize({ startOnLoad: false, theme: 'dark', background: 'transparent' });
+
+document.getElementById('logoutBtn').addEventListener('click', (e) => {
+    e.preventDefault();
+    BioShieldAPI.clearToken();
+    location.href = '/login';
+});
+
+function formatTs(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', {month:'short', day:'numeric'}) + ' ' + 
+           d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+}
+
+function getBadgeProps(status) {
+    if (['ALLOW', 'SUCCESS', 'PASSED_BIOMETRIC', 'BIOMETRIC'].includes(status)) return { class: 'badge-success', text: status };
+    if (['OTP_REQUIRED', 'OTP', 'OTP_VERIFIED'].includes(status)) return { class: 'badge-warn', text: status };
+    return { class: 'badge-danger', text: status || 'FAILED' };
+}
+
+function updateIntegrityUI(isEnrolled, score) {
+    const bar = document.getElementById('healthBar');
+    const scoreText = document.getElementById('healthScore');
+    const badgeContainer = document.getElementById('statusBadgeContainer');
+    
+    const color = isEnrolled ? 'var(--accent-green)' : 'var(--accent-red)';
+    const shadow = isEnrolled ? 'var(--accent-green-glow)' : 'var(--accent-red-glow)';
+    
+    bar.style.width = score + '%';
+    bar.style.background = color;
+    bar.style.boxShadow = `0 0 15px ${shadow}`;
+    
+    scoreText.style.color = color;
+    scoreText.textContent = score + '%';
+
+    if (isEnrolled) {
+        badgeContainer.innerHTML = '<span class="badge badge-success">● PROTECTED</span>';
+    } else {
+        badgeContainer.innerHTML = '<span class="badge badge-danger">● VULNERABLE</span> <a href="/enroll" style="color:var(--text-primary); font-size:0.8rem; margin-left:10px;">Fix Now →</a>';
+    }
+}
+
+async function renderDynamicFlowchart(profileData, recentEvents) {
+    const container = document.getElementById('mermaidContainer');
+    let baseRisk = profileData ? 'Active Baseline' : 'No Baseline';
+    let path = 'Pending';
+    
+    if (recentEvents && recentEvents.length > 0) {
+        const lastRisk = recentEvents[0].risk_level;
+        if (lastRisk === 'ALLOW') path = 'Approved';
+        else if (lastRisk === 'OTP_REQUIRED') path = 'OTP Requested';
+        else path = 'Blocked';
+    }
+
+    const graphDefinition = `
+        graph TD
+            A[Input Keystrokes] --> B{${baseRisk}}
+            B -->|Z-Score < 0.35| C[Approve TXN]
+            B -->|Z-Score 0.35 - 0.65| D[Trigger OTP]
+            B -->|Z-Score > 0.65| E[Block TXN]
+            
+            classDef default fill:#1e293b,stroke:#334155,color:#f8fafc
+            classDef activePath fill:#06b6d420,stroke:#06b6d4,color:#06b6d4,stroke-width:2px
+            
+            ${path === 'Approved' ? 'class C activePath' : ''}
+            ${path === 'OTP Requested' ? 'class D activePath' : ''}
+            ${path === 'Blocked' ? 'class E activePath' : ''}
+    `;
+
+    try {
+        const { svg } = await mermaid.render('dynamicFlow', graphDefinition);
+        container.innerHTML = svg;
+    } catch (e) {
+        container.innerHTML = `<span style="color:var(--text-tertiary)">Graph render failed</span>`;
+    }
+}
+
+async function loadDashboard() {
+    try {
+        const data = await BioShieldAPI.riskHistory();
+        const { user, profile, risk_events, transactions } = data;
+
+        document.getElementById('welcomeName').textContent = user.full_name;
+        document.getElementById('upiDisplay').textContent = user.upi_id;
+        
+        const healthScoreValue = user.is_enrolled ? 100 : 30;
+        updateIntegrityUI(user.is_enrolled, healthScoreValue);
+
+        const allow = risk_events.filter(e => e.risk_level === 'ALLOW').length;
+        const flagged = risk_events.filter(e => e.risk_level === 'OTP_REQUIRED').length;
+        const blocked = risk_events.filter(e => e.risk_level === 'BLOCK' || e.resolution === 'BLOCKED').length;
+
+        document.getElementById('statBalance').textContent = `₹${user.balance.toLocaleString('en-IN', {minimumFractionDigits:2})}`;
+        document.getElementById('statCleared').textContent = allow;
+        document.getElementById('statFlagged').textContent = flagged;
+        document.getElementById('statBlocked').textContent = blocked;
+
+        if (profile) {
+            const rows = [
+                ['Avg Dwell Time', `${profile.avg_dwell_time.toFixed(1)} ms`],
+                ['Avg Flight Time', `${profile.avg_flight_time.toFixed(1)} ms`],
+                ['Typing Speed', `${profile.avg_typing_speed.toFixed(2)} chars/sec`],
+                ['Rhythm Jitter', `${profile.avg_jitter.toFixed(1)} ms`],
+                ['Error Correction Rate', `${(profile.avg_backspace_rate * 100).toFixed(1)}%`],
+                ['Total Samples Trained', profile.sample_count],
+            ];
+            document.getElementById('profileSection').innerHTML = rows.map(([lbl, val]) => `
+                <div class="dna-row">
+                    <span class="dna-label">${lbl}</span>
+                    <span class="dna-value">${val}</span>
+                </div>
+            `).join('');
+        } else {
+            document.getElementById('profileSection').innerHTML = `<p style="color:var(--text-tertiary); font-size:0.95rem;">Baseline not established. Please enroll biometrics.</p>`;
+        }
+
+        const tbody = document.getElementById('txnTableBody');
+        if (transactions.length === 0 && risk_events.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:var(--text-tertiary); padding: 2rem;">No recorded activity.</td></tr>`;
+        } else {
+            const allActivity = [...transactions, ...risk_events.filter(e => !e.amount)]
+                .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+                .slice(0, 8);
+            
+            tbody.innerHTML = allActivity.map(item => {
+                const isTxn = !!item.txn_id;
+                const status = isTxn ? item.status : item.risk_level;
+                const badgeProps = getBadgeProps(isTxn ? (item.auth_method || item.status) : item.risk_level);
+                const desc = isTxn ? `TXN to ${item.recipient_upi}` : `EVENT: ${item.event_type}`;
+                const amt = item.amount ? `₹${item.amount.toFixed(2)}` : '—';
+                const auth = isTxn ? item.auth_method || 'PENDING' : 'ANALYSIS';
+
+                return `
+                    <tr>
+                        <td><span class="badge ${getBadgeProps(status).class}">${status}</span></td>
+                        <td style="font-family:var(--font-mono); font-size:0.85rem; color:var(--text-secondary);">${desc}</td>
+                        <td class="tx-amount">${amt}</td>
+                        <td><span class="badge ${badgeProps.class}">${auth}</span></td>
+                        <td class="tx-date">${formatTs(item.created_at)}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        await renderDynamicFlowchart(profile, risk_events);
+
+    } catch (err) {
+        console.error(err);
+        if (err.status === 401) {
+            BioShieldAPI.clearToken();
+            location.href = '/login';
+        }
+        document.getElementById('welcomeName').textContent = "Connection Error";
+        document.getElementById('upiDisplay').textContent = "Please refresh the page.";
+    }
+}
+
+loadDashboard();
+</script>
+</body>
+</html>

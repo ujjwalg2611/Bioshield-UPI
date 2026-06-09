@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BioShield – Provision Account</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+
+<style>
+
+:root {
+    --bg-main: #0b1120;
+    --bg-card: #111827;
+    --bg-elevated: #1f2937;
+    --border: #374151;
+    --text-main: #f3f4f6;
+    --text-muted: #9ca3af;
+    
+    --primary: #0ea5e9;
+    --primary-hover: #0284c7;
+    --success: #10b981;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    
+    --font-sans: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-image: radial-gradient(circle at top right, rgba(14, 165, 233, 0.05), transparent 40%);
+}
+
+.signup-container {
+    width: 100%;
+    max-width: 480px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    margin: 40px 20px;
+}
+
+/* ── Brand Header ── */
+.brand-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 32px;
+    text-decoration: none;
+}
+
+.brand-icon {
+    width: 48px; height: 48px;
+    background: linear-gradient(135deg, var(--primary), #3b82f6);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; color: #fff;
+    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+}
+
+.brand-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.5px;
+    margin: 0;
+}
+
+.brand-subtitle {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin: 4px 0 0 0;
+}
+
+/* ── Form Elements ── */
+.form-group {
+    margin-bottom: 20px;
+    position: relative;
+}
+
+label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"] {
+    width: 100%;
+    background: var(--bg-main);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 1rem;
+    font-family: var(--font-mono);
+    color: var(--text-main);
+    transition: all 0.2s;
+    box-sizing: border-box;
+}
+
+input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.1);
+}
+
+/* ── New Feature: Password Strength Meter ── */
+.strength-meter {
+    height: 4px;
+    background: var(--bg-elevated);
+    border-radius: 4px;
+    margin-top: 8px;
+    overflow: hidden;
+    display: flex;
+    gap: 2px;
+}
+
+.strength-bar {
+    height: 100%;
+    flex: 1;
+    background: transparent;
+    transition: background 0.3s ease;
+}
+
+.strength-text {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 6px;
+    text-align: right;
+    font-weight: 500;
+}
+
+/* ── New Feature: Match Indicator ── */
+.match-indicator {
+    position: absolute;
+    right: 16px;
+    top: 42px;
+    font-size: 1.2rem;
+    display: none;
+}
+
+/* ── HUD Restyling ── */
+#biometric-hud {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 20px 0;
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Checkbox */
+.checkbox-group {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 24px 0;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    margin-top: 2px;
+    cursor: pointer;
+}
+
+.checkbox-group label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-transform: none;
+    font-weight: 400;
+    line-height: 1.5;
+    cursor: pointer;
+    display: inline;
+}
+
+.checkbox-group a {
+    color: var(--primary);
+    text-decoration: none;
+}
+
+.checkbox-group a:hover {
+    text-decoration: underline;
+}
+
+/* ── Button ── */
+.btn-primary {
+    width: 100%;
+    padding: 14px;
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    background: var(--primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--primary-hover);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ── Alert ── */
+.alert {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: center;
+    display: none;
+}
+.alert.show { display: block; animation: fadeIn 0.3s ease; }
+.alert-success { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: var(--success); }
+.alert-error   { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+/* ── Bottom Links ── */
+.bottom-links {
+    text-align: center;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.bottom-links a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.bottom-links a:hover {
+    color: var(--primary-hover);
+}
+</style>
+</head>
+<body>
+
+<div class="signup-container">
+
+    <a href="/" class="brand-header">
+        <div class="brand-icon">🛡</div>
+        <div>
+            <h1 class="brand-title">BioShield</h1>
+            <p class="brand-subtitle">Operator Provisioning</p>
+        </div>
+    </a>
+
+    <div style="margin-bottom: 24px;">
+        <h2 style="font-size: 1.4rem; margin: 0 0 6px 0; font-weight: 600;">Create Account</h2>
+        <p style="color: var(--text-muted); margin: 0; font-size: 0.9rem;">Establish your secure identity and biometric profile.</p>
+    </div>
+
+    <form id="signupForm" autocomplete="off">
+        <div class="form-group">
+            <label>Legal Name</label>
+            <input type="text" id="full_name" placeholder="John Doe" required>
+        </div>
+
+        <div class="form-group">
+            <label>Secure Email</label>
+            <input type="email" id="email" placeholder="operator@domain.com" required>
+        </div>
+
+        <div class="form-group">
+            <label style="display: flex; justify-content: space-between;">
+                <span>Passphrase</span>
+                <span style="color: var(--primary); font-weight: 500;">Type naturally</span>
+            </label>
+            <input type="password" id="password" placeholder="Create a strong passphrase" required autocomplete="new-password">
+            
+            <div class="strength-meter">
+                <div class="strength-bar" id="str1"></div>
+                <div class="strength-bar" id="str2"></div>
+                <div class="strength-bar" id="str3"></div>
+                <div class="strength-bar" id="str4"></div>
+            </div>
+            <div class="strength-text" id="strengthText">Weak</div>
+        </div>
+
+        <div class="form-group">
+            <label>Confirm Passphrase</label>
+            <input type="password" id="confirm_password" placeholder="Repeat passphrase" required autocomplete="new-password">
+            <span class="match-indicator" id="matchIndicator"></span>
+        </div>
+
+        <div id="biometric-hud"></div>
+
+        <div class="checkbox-group">
+            <input type="checkbox" id="terms" required>
+            <label for="terms">I agree to the <a href="#">Terms of Service</a> and acknowledge that my keystroke telemetry will be captured and encrypted for authentication purposes.</label>
+        </div>
+
+        <button type="submit" class="btn-primary" id="signupBtn">
+            <span id="btnText">Provision Account</span>
+            <span id="btnSpinner" class="spinner" style="display:none; width:16px; height:16px; border-width:2px;"></span>
+        </button>
+    </form>
+
+    <div id="alertBox" class="alert"></div>
+
+    <div class="bottom-links">
+        Existing Operator? <a href="/login">Authenticate Here</a>
+    </div>
+</div>
+
+<script src="/static/keystroke.js"></script>
+<script>
+// ── Redirect if already logged in ──
+if (BioShieldAPI.getToken() && BioShieldAPI.getUser()) {
+    location.href = '/dashboard';
+}
+
+// ── Biometric Capture ──
+const capture = new KeystrokeCapture({ minKeys: 4 });
+const pwdInput = document.getElementById('password');
+const hudContainer = document.getElementById('biometric-hud');
+
+capture.attach(pwdInput);
+capture.onUpdate = () => {
+    if(hudContainer.style.display !== 'block') {
+         hudContainer.style.display = 'block';
+    }
+    new BiometricHUD(hudContainer, capture);
+};
+
+// ── Password Strength Logic ──
+const strBars = [
+    document.getElementById('str1'),
+    document.getElementById('str2'),
+    document.getElementById('str3'),
+    document.getElementById('str4')
+];
+const strText = document.getElementById('strengthText');
+
+pwdInput.addEventListener('input', (e) => {
+    const val = e.target.value;
+    let strength = 0;
+    
+    if (val.length >= 8) strength++;
+    if (val.match(/[A-Z]/) && val.match(/[a-z]/)) strength++;
+    if (val.match(/[0-9]/)) strength++;
+    if (val.match(/[^a-zA-Z0-9]/)) strength++;
+
+    // Reset colors
+    strBars.forEach(bar => bar.style.background = 'transparent');
+    
+    if (val.length === 0) {
+        strText.textContent = '';
+        return;
+    }
+
+    const colors = ['var(--danger)', 'var(--warn)', 'var(--primary)', 'var(--success)'];
+    const labels = ['Weak', 'Fair', 'Good', 'Strong'];
+
+    for (let i = 0; i < strength; i++) {
+        strBars[i].style.background = colors[strength - 1] || 'var(--danger)';
+    }
+    strText.textContent = labels[strength - 1] || 'Weak';
+    strText.style.color = colors[strength - 1] || 'var(--danger)';
+    
+    checkMatch(); // Re-verify match if main password changes
+});
+
+// ── Password Match Logic ──
+const confirmInput = document.getElementById('confirm_password');
+const matchIndicator = document.getElementById('matchIndicator');
+
+function checkMatch() {
+    const pwd1 = pwdInput.value;
+    const pwd2 = confirmInput.value;
+    
+    if (pwd2.length === 0) {
+        matchIndicator.style.display = 'none';
+        confirmInput.style.borderColor = 'var(--border)';
+        return;
+    }
+
+    matchIndicator.style.display = 'block';
+    if (pwd1 === pwd2) {
+        matchIndicator.innerHTML = '✅';
+        confirmInput.style.borderColor = 'var(--success)';
+    } else {
+        matchIndicator.innerHTML = '❌';
+        confirmInput.style.borderColor = 'var(--danger)';
+    }
+}
+
+confirmInput.addEventListener('input', checkMatch);
+
+// ── Form Submission ──
+function showAlert(msg, type) {
+    const el = document.getElementById('alertBox');
+    el.textContent = msg;
+    el.className = `alert alert-${type} show`;
+}
+
+document.getElementById('signupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const pw = pwdInput.value;
+    const pw2 = confirmInput.value;
+
+    if (pw !== pw2) {
+        showAlert('Passphrases do not match. Please verify.', 'error');
+        return;
+    }
+    if (pw.length < 8) {
+        showAlert('Passphrase must be at least 8 characters.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('signupBtn');
+    const btnText = document.getElementById('btnText');
+    const btnSpinner = document.getElementById('btnSpinner');
+
+    btnText.textContent = 'Generating Keys...';
+    btnSpinner.style.display = 'inline-block';
+    btn.disabled = true;
+
+    try {
+        const data = await BioShieldAPI.signup({
+            full_name: document.getElementById('full_name').value.trim(),
+            email: document.getElementById('email').value.trim(),
+            password: pw
+        });
+
+        BioShieldAPI.setToken(data.token);
+        BioShieldAPI.setUser(data.user);
+
+        showAlert(`Identity Secured. Assigned ID: ${data.user.upi_id}`, 'success');
+
+        setTimeout(() => {
+            location.href = '/enroll';
+        }, 1800);
+
+    } catch (err) {
+        showAlert(err.error || 'Provisioning failed. Please retry.', 'error');
+        btn.disabled = false;
+        btnText.textContent = 'Provision Account';
+        btnSpinner.style.display = 'none';
+    }
+});
+</script>
+</body>
+</html>

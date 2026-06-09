@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BioShield – Secure Transfer</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+
+<style>
+/* ── Premium Enterprise Palette ── */
+:root {
+    --bg-main: #0b1120;
+    --bg-card: #111827;
+    --bg-elevated: #1f2937;
+    --border: #374151;
+    --text-main: #f3f4f6;
+    --text-muted: #9ca3af;
+    
+    --primary: #0ea5e9;
+    --primary-hover: #0284c7;
+    --success: #10b981;
+    --success-hover: #059669;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    
+    --font-sans: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-image: radial-gradient(circle at top center, rgba(16, 185, 129, 0.05), transparent 50%);
+}
+
+.payment-container {
+    width: 100%;
+    max-width: 480px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    margin: 20px;
+    position: relative;
+    z-index: 10;
+}
+
+/* ── Brand Header ── */
+.brand-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 32px;
+    text-decoration: none;
+}
+
+.brand-icon {
+    width: 48px; height: 48px;
+    background: linear-gradient(135deg, var(--success), #059669);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; color: #fff;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.brand-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.5px;
+    margin: 0;
+}
+
+.brand-subtitle {
+    font-size: 0.9rem;
+    color: var(--success);
+    font-weight: 500;
+    margin: 4px 0 0 0;
+}
+
+/* ── Balance Card ── */
+.balance-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.balance-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0; width: 4px;
+    background: var(--success);
+}
+
+.balance-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.balance-amount {
+    font-family: var(--font-mono);
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-top: 4px;
+}
+
+/* ── Form Elements ── */
+.form-group {
+    margin-bottom: 20px;
+}
+
+label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+input {
+    width: 100%;
+    background: var(--bg-main);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 1.05rem;
+    font-family: var(--font-mono);
+    color: var(--text-main);
+    transition: all 0.2s;
+    box-sizing: border-box;
+}
+
+input:focus {
+    outline: none;
+    border-color: var(--success);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15);
+}
+
+/* ── HUD Restyling ── */
+#biometric-hud {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 20px 0;
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+/* ── Buttons ── */
+.btn {
+    width: 100%;
+    padding: 16px;
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-success { background: var(--success); color: #fff; }
+.btn-success:hover:not(:disabled) { background: var(--success-hover); }
+
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-main); }
+.btn-outline:hover { background: var(--bg-elevated); border-color: var(--text-muted); }
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Modals ── */
+.modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(11, 17, 32, 0.85);
+    backdrop-filter: blur(8px);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.modal-overlay.show {
+    display: flex;
+    opacity: 1;
+}
+
+.modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    width: 90%;
+    max-width: 420px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    transform: translateY(20px);
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.modal-overlay.show .modal { transform: translateY(0); }
+
+.modal h2 { font-size: 1.4rem; margin: 0 0 12px 0; color: var(--text-main); }
+
+/* OTP Inputs */
+.otp-inputs {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.otp-digit {
+    width: 100%;
+    height: 54px;
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    padding: 0;
+    border-radius: 8px;
+    background: var(--bg-main);
+}
+
+/* ── Alerts ── */
+.alert {
+    padding: 14px 16px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-top: 16px;
+    display: none;
+}
+.alert.show { display: block; animation: fadeIn 0.3s ease; }
+.alert-success { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: var(--success); }
+.alert-warn    { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: var(--warn); }
+.alert-error   { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+/* ── Footer ── */
+.nav-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+}
+.nav-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+.nav-link:hover { color: var(--text-main); }
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+</head>
+<body>
+
+<div class="payment-container">
+
+    <a href="/dashboard" class="brand-header">
+        <div class="brand-icon">₹</div>
+        <div>
+            <h1 class="brand-title">Secure Transfer</h1>
+            <p class="brand-subtitle">Keystroke telemetry active</p>
+        </div>
+    </a>
+
+    <div class="balance-card">
+        <div>
+            <div class="balance-label">Available Balance</div>
+            <div id="balanceDisplay" class="balance-amount">₹ 0.00</div>
+        </div>
+        <div style="font-size: 2.5rem; opacity: 0.1; font-weight: 700;">₹</div>
+    </div>
+
+    <form id="paymentForm" autocomplete="off">
+        <div class="form-group">
+            <label>Recipient UPI ID</label>
+            <input type="text" id="recipient_upi" placeholder="user@bioshield" required>
+        </div>
+
+        <div class="form-group">
+            <label>Amount (₹)</label>
+            <input type="number" id="amount" placeholder="0.00" min="1" step="0.01" required>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <span>Authorization PIN</span>
+                <span style="color:var(--success);">Type Naturally</span>
+            </label>
+            <input type="password" id="pin_input" placeholder="••••••" maxlength="6" 
+                   inputmode="numeric" autocomplete="off" required>
+        </div>
+
+        <div id="biometric-hud"></div>
+
+        <button type="submit" class="btn btn-success" id="payBtn">
+            <span id="payBtnText">Authorize Transfer</span>
+            <span id="paySpinner" class="spinner" style="display:none; width:16px; height:16px; border-width:2px; margin-left:8px;"></span>
+        </button>
+    </form>
+
+    <div id="alertBox" class="alert"></div>
+
+    <div class="nav-footer">
+        <a href="/dashboard" class="nav-link">← Return to Dashboard</a>
+        <a href="/test" class="nav-link">Laboratory Test →</a>
+    </div>
+</div>
+
+<div class="modal-overlay" id="otpModal">
+    <div class="modal">
+        <h2>⚠ Step-Up Authentication</h2>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.5;">
+            Anomalous typing behavior detected. Verify this transaction using the OTP sent to your registered device.
+        </p>
+
+        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: var(--warn); 
+                    padding: 12px 16px; border-radius: 8px; font-family: var(--font-mono); font-size: 0.85rem; margin-bottom: 20px;">
+            Demo Override Code: <strong id="demoOtp" style="color: #fff;">—</strong>
+        </div>
+
+        <div class="otp-inputs">
+            <input type="text" maxlength="1" class="otp-digit" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-digit" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-digit" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-digit" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-digit" inputmode="numeric">
+            <input type="text" maxlength="1" class="otp-digit" inputmode="numeric">
+        </div>
+
+        <button class="btn btn-primary" id="otpSubmitBtn" style="margin-bottom: 12px;">
+            <span id="otpBtnText">Verify & Transfer</span>
+            <span id="otpSpinner" class="spinner" style="display:none; width:16px; height:16px; border-width:2px;"></span>
+        </button>
+
+        <button class="btn btn-outline" id="openFaceBtn">
+            Use Face Biometrics Instead
+        </button>
+
+        <div id="otpAlert" class="alert"></div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="faceModal">
+    <div class="modal">
+        <h2>🪪 Facial Recognition</h2>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
+            Position your face within the frame and capture to authorize the transaction.
+        </p>
+
+        <div style="border-radius: 12px; overflow: hidden; border: 2px solid var(--border); margin-bottom: 20px;">
+            <video id="face-video" autoplay playsinline muted style="width: 100%; display: block; background: #000;"></video>
+        </div>
+        <canvas id="face-canvas" style="display:none;"></canvas>
+
+        <button class="btn btn-primary" id="captureBtn" style="margin-bottom: 12px;" disabled>
+            Capture & Authorize
+        </button>
+
+        <button class="btn btn-outline" id="backToOtpBtn">
+            ← Return to Passcode
+        </button>
+
+        <div id="faceAlert" class="alert"></div>
+    </div>
+</div>
+
+<script src="/static/keystroke.js"></script>
+<script>
+// ── Auth guard ──
+if (!BioShieldAPI.getToken()) location.href = '/login';
+
+// ── State ──
+let pendingEventId  = null;
+let pendingAmount   = 0;
+let pendingRecipient = '';
+let cameraStream    = null;
+const capture = new KeystrokeCapture({ minKeys: 4 });
+
+// ── Load balance ──
+async function loadBalance() {
+  try {
+    const d = await BioShieldAPI.riskHistory();
+    document.getElementById('balanceDisplay').textContent = `₹${d.user.balance.toLocaleString('en-IN', {minimumFractionDigits:2})}`;
+  } catch {}
+}
+loadBalance();
+
+// ── Wire PIN keystroke capture ──
+const pinInput = document.getElementById('pin_input');
+const hudEl = document.getElementById('biometric-hud');
+
+capture.attach(pinInput);
+capture.onUpdate = () => {
+    if(hudEl.style.display !== 'block') {
+         hudEl.style.display = 'block';
+    }
+    new BiometricHUD(hudEl, capture);
+};
+
+function showAlert(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = `alert alert-${type} show`;
+}
+
+// ── Payment form submit ──
+document.getElementById('paymentForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('payBtn');
+  document.getElementById('payBtnText').textContent = 'Analyzing Telemetry...';
+  document.getElementById('paySpinner').style.display = 'inline-block';
+  btn.disabled = true;
+
+  pendingAmount   = parseFloat(document.getElementById('amount').value);
+  pendingRecipient = document.getElementById('recipient_upi').value.trim();
+
+  try {
+    const data = await BioShieldAPI.payment({
+      recipient_upi: pendingRecipient,
+      amount: pendingAmount,
+      pin: document.getElementById('pin_input').value,
+      keystroke_data: capture.getData()
+    });
+
+    if (data.status === 'BLOCKED') {
+      showAlert('alertBox', `Transfer Terminated — Severe risk variance detected (${Math.round((data.risk_score||0)*100)}%).`, 'error');
+
+    } else if (data.status === 'OTP_REQUIRED') {
+      pendingEventId = data.event_id;
+      document.getElementById('demoOtp').textContent = data.otp || '(check server)';
+      
+      // Show Modal smoothly
+      const modal = document.getElementById('otpModal');
+      modal.style.display = 'flex';
+      // Trigger reflow to apply animation
+      modal.offsetHeight; 
+      modal.classList.add('show');
+      
+      document.getElementById('alertBox').classList.remove('show');
+
+    } else if (data.status === 'SUCCESS') {
+      showAlert('alertBox',
+        `Transfer Complete. ₹${pendingAmount.toFixed(2)} sent to ${pendingRecipient}. TXN: ${data.txn_id}`,
+        'success'
+      );
+      loadBalance();
+      capture.reset();
+      document.getElementById('paymentForm').reset();
+      hudEl.style.display = 'none';
+    }
+
+  } catch (err) {
+    showAlert('alertBox', err.error || 'Transaction failed.', 'error');
+  } finally {
+    btn.disabled = false;
+    document.getElementById('payBtnText').textContent = 'Authorize Transfer';
+    document.getElementById('paySpinner').style.display = 'none';
+  }
+});
+
+// ── OTP digit auto-advance ──
+document.querySelectorAll('.otp-digit').forEach((el, i, all) => {
+  el.addEventListener('input', () => {
+    if (el.value && i < all.length - 1) all[i + 1].focus();
+  });
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace' && !el.value && i > 0) all[i - 1].focus();
+  });
+});
+
+// ── OTP submit ──
+document.getElementById('otpSubmitBtn').addEventListener('click', async () => {
+  const digits = [...document.querySelectorAll('.otp-digit')].map(i => i.value).join('');
+  if (digits.length !== 6) { showAlert('otpAlert', 'Incomplete code.', 'error'); return; }
+
+  document.getElementById('otpBtnText').textContent = 'Verifying...';
+  document.getElementById('otpSpinner').style.display = 'inline-block';
+
+  try {
+    const data = await BioShieldAPI.otpVerify({
+      otp: digits,
+      event_id: pendingEventId,
+      amount: pendingAmount,
+      recipient_upi: pendingRecipient
+    });
+    
+    document.getElementById('otpModal').classList.remove('show');
+    setTimeout(() => document.getElementById('otpModal').style.display = 'none', 300);
+    
+    showAlert('alertBox',
+      `Authorization Accepted. ₹${pendingAmount.toFixed(2)} sent. TXN: ${data.txn_id}`,
+      'success'
+    );
+    loadBalance();
+    capture.reset();
+    document.getElementById('paymentForm').reset();
+    hudEl.style.display = 'none';
+  } catch (err) {
+    showAlert('otpAlert', err.error || 'Invalid Code.', 'error');
+  } finally {
+    document.getElementById('otpBtnText').textContent = 'Verify & Transfer';
+    document.getElementById('otpSpinner').style.display = 'none';
+  }
+});
+
+// ── Open Face ID ──
+document.getElementById('openFaceBtn').addEventListener('click', async () => {
+  document.getElementById('otpModal').classList.remove('show');
+  setTimeout(() => document.getElementById('otpModal').style.display = 'none', 300);
+  
+  const faceModal = document.getElementById('faceModal');
+  faceModal.style.display = 'flex';
+  faceModal.offsetHeight;
+  faceModal.classList.add('show');
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    const video = document.getElementById('face-video');
+    video.srcObject = cameraStream;
+    document.getElementById('captureBtn').disabled = false;
+  } catch {
+    showAlert('faceAlert', 'Camera access denied. Please check permissions.', 'error');
+  }
+});
+
+document.getElementById('backToOtpBtn').addEventListener('click', () => {
+  if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+  
+  document.getElementById('faceModal').classList.remove('show');
+  setTimeout(() => {
+      document.getElementById('faceModal').style.display = 'none';
+      const otpModal = document.getElementById('otpModal');
+      otpModal.style.display = 'flex';
+      otpModal.offsetHeight;
+      otpModal.classList.add('show');
+  }, 300);
+});
+
+// ── Face capture & verify ──
+document.getElementById('captureBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('captureBtn');
+  btn.textContent = 'Processing...';
+  btn.disabled = true;
+
+  const video  = document.getElementById('face-video');
+  const canvas = document.getElementById('face-canvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+  if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+
+  try {
+    const data = await BioShieldAPI.faceVerify({
+      face_image: imageData,
+      event_id: pendingEventId,
+      amount: pendingAmount,
+      recipient_upi: pendingRecipient
+    });
+    
+    document.getElementById('faceModal').classList.remove('show');
+    setTimeout(() => document.getElementById('faceModal').style.display = 'none', 300);
+
+    showAlert('alertBox',
+      `Identity Confirmed (${Math.round(data.confidence*100)}% match). ₹${pendingAmount.toFixed(2)} sent. TXN: ${data.txn_id}`,
+      'success'
+    );
+    loadBalance();
+    capture.reset();
+    document.getElementById('paymentForm').reset();
+    hudEl.style.display = 'none';
+  } catch (err) {
+    showAlert('faceAlert', err.error || 'Facial verification failed.', 'error');
+    btn.textContent = 'Capture & Authorize';
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

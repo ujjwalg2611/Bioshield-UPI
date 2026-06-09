@@ -1,0 +1,31 @@
+# Database (contains real user data)
+instance/
+*.db
+*.sqlite3
+
+# Face data (biometric data - never upload)
+face_data/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment variables
+.env
+*.env
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
