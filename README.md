@@ -1,6 +1,6 @@
 # 🛡 BioShield – Behavioral Biometric UPI System
 
-Secure UPI payments using **keystroke dynamics**, real-time **risk scoring**, and fallback **OTP + Face ID** authentication.
+Secure UPI payments using **keystroke dynamics**, real-time **risk scoring**, blockchain **transaction notarization**, and fallback **OTP + Face ID** authentication.
 
 ---
 
@@ -18,6 +18,8 @@ python app.py
 export DATABASE_URL=postgresql://user:pass@localhost/bioshield
 ```
 
+See `.env.example` for the full list of optional environment variables (blockchain notarization, SMTP for OTP email, face-data encryption key).
+
 ---
 
 ## Pages
@@ -28,8 +30,9 @@ export DATABASE_URL=postgresql://user:pass@localhost/bioshield
 | `/signup` | Create account |
 | `/enroll` | Capture 10 typing samples for baseline |
 | `/test` | Test biometric recognition |
-| `/payment` | UPI payment with risk engine |
+| `/payment` | UPI payment with risk engine + on-chain notarization badge |
 | `/dashboard` | Security dashboard + transaction history |
+| `/spikeguard/` | SpikeGuard merchant fraud-spike detector dashboard |
 
 ---
 
@@ -45,6 +48,7 @@ export DATABASE_URL=postgresql://user:pass@localhost/bioshield
 | `/api/otp-verify` | POST | ✓ | Verify OTP fallback |
 | `/api/face-verify` | POST | ✓ | Mock Face ID fallback |
 | `/api/risk-history` | GET | ✓ | Dashboard data |
+| `/api/verify-chain/<txn_id>` | GET | ✓ | Recompute + compare on-chain hash to prove a record wasn't tampered with |
 
 ---
 
@@ -65,6 +69,8 @@ score < 0.65  → OTP_REQUIRED
 score ≥ 0.65  → BLOCK
 ```
 
+Profiles self-update after every successful payment via an exponential moving average (α = 0.15): `new_avg = 0.85 × old_avg + 0.15 × new_sample`, so the baseline adapts to natural typing drift over time.
+
 ---
 
 ## Keystroke Features Captured
@@ -80,36 +86,44 @@ score ≥ 0.65  → BLOCK
 
 ---
 
+## Blockchain Notarization
+
+Every payment is hashed and notarized on a Sepolia testnet smart contract (`contracts/BioShieldLedger.sol`), asynchronously so the payment flow itself stays instant. `/payment` shows a live badge that polls until confirmation, with an Etherscan link and a one-click integrity check (`GET /api/verify-chain/<txn_id>`) that recomputes the hash and compares it on-chain. See [`ROADMAP.md`](ROADMAP.md) for the architecture and deployment details.
+
+---
+
+## SpikeGuard (merchant fraud-spike detector)
+
+A standalone extension that reuses BioShield's weighted Z-score / EWMA-baseline approach at the merchant level instead of the per-user keystroke level, to flag anomalous transaction spikes (bot attacks, refund abuse, chargeback rings) for manual review. See [`SPIKEGUARD_REPORT.md`](SPIKEGUARD_REPORT.md) for the full write-up, methodology, and results. Dashboard: `/spikeguard/`.
+
+---
+
 ## File Structure
 
 ```
 bioshield/
-├── app.py              ← Flask server + all API routes + risk engine
-├── models.py           ← SQLAlchemy models (User, KeystrokeProfile, RiskEvent, Transaction)
+├── app.py                  ← Flask server + all API routes + risk engine
+├── models.py                ← SQLAlchemy models (User, KeystrokeProfile, RiskEvent, Transaction)
+├── blockchain.py             ← web3.py wrapper for async on-chain notarization
+├── contracts/
+│   └── BioShieldLedger.sol   ← Solidity contract (testnet notarization)
+├── scripts/
+│   └── deploy_contract.py    ← Compiles + deploys the contract (py-solc-x, no Node/Hardhat)
+├── spikeguard/                ← Merchant fraud-spike detector (see SPIKEGUARD_REPORT.md)
 ├── requirements.txt
+├── Procfile / render.yaml     ← Render deployment config
 ├── static/
-│   ├── keystroke.js    ← Biometric capture library (KeystrokeCapture, EnrollmentCollector, BiometricHUD)
-│   └── style.css       ← Design system
+│   ├── keystroke.js          ← Biometric capture library (KeystrokeCapture, EnrollmentCollector, BiometricHUD)
+│   └── style.css             ← Design system
 └── templates/
     ├── login.html
     ├── signup.html
     ├── enroll.html
     ├── test.html
     ├── payment.html
-    └── dashboard.html
+    ├── dashboard.html
+    └── spikeguard_dashboard.html
 ```
-
----
-
-## Self-Learning
-
-After every successful payment, the profile auto-updates via **exponential moving average** (α=0.15):
-
-```python
-new_avg = 0.85 × old_avg + 0.15 × new_sample
-```
-
-This adapts to natural typing drift over time.
 
 ---
 
@@ -118,5 +132,5 @@ This adapts to natural typing drift over time.
 - Replace SQLite with PostgreSQL via `DATABASE_URL` env var
 - Remove demo OTP from payment response (search `demo only`)
 - Replace mock Face ID in `/api/face-verify` with real ML (DeepFace / AWS Rekognition)
-- Set a strong `SECRET_KEY` environment variable
-- Add HTTPS, rate limiting, and Redis for OTP storage
+- Set a strong `SECRET_KEY` and `FACE_ENCRYPTION_KEY` environment variable
+- Add HTTPS and Redis for OTP storage in front of/alongside the current rate limiting

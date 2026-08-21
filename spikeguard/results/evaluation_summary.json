@@ -1,0 +1,35 @@
+{
+  "n_merchants": 40,
+  "hours_per_merchant": 1440,
+  "total_merchant_hours": 57600,
+  "confusion_matrix": {
+    "tp": 361,
+    "fp": 200,
+    "fn": 413,
+    "tn": 56626
+  },
+  "precision": 0.6435,
+  "recall": 0.4664,
+  "f1": 0.5408,
+  "false_positive_cost_inr": 9000.0,
+  "avg_review_cost_inr": 45.0,
+  "recall_by_incident_type": {
+    "CHARGEBACK_RING": {
+      "caught": 239,
+      "total": 651,
+      "recall": 0.367
+    },
+    "BOT_ATTACK": {
+      "caught": 43,
+      "total": 43,
+      "recall": 1.0
+    },
+    "REFUND_ABUSE": {
+      "caught": 79,
+      "total": 80,
+      "recall": 0.988
+    }
+  },
+  "n_alerts_raised": 561,
+  "n_true_incident_hours": 774
+}
