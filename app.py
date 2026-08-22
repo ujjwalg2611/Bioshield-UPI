@@ -39,10 +39,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 
-# --- SpikeGuard: merchant fraud-spike detector (AI Risk Manager track) ---
-from spikeguard.routes import spikeguard_bp
-app.register_blueprint(spikeguard_bp)
-
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per hour"])
 
 # DEMO_MODE=true is only for local testing without a real SMS/email provider

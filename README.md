@@ -32,7 +32,6 @@ See `.env.example` for the full list of optional environment variables (blockcha
 | `/test` | Test biometric recognition |
 | `/payment` | UPI payment with risk engine + on-chain notarization badge |
 | `/dashboard` | Security dashboard + transaction history |
-| `/spikeguard/` | SpikeGuard merchant fraud-spike detector dashboard |
 
 ---
 
@@ -92,12 +91,6 @@ Every payment is hashed and notarized on a Sepolia testnet smart contract (`cont
 
 ---
 
-## SpikeGuard (merchant fraud-spike detector)
-
-A standalone extension that reuses BioShield's weighted Z-score / EWMA-baseline approach at the merchant level instead of the per-user keystroke level, to flag anomalous transaction spikes (bot attacks, refund abuse, chargeback rings) for manual review. See [`SPIKEGUARD_REPORT.md`](SPIKEGUARD_REPORT.md) for the full write-up, methodology, and results. Dashboard: `/spikeguard/`.
-
----
-
 ## File Structure
 
 ```
@@ -109,7 +102,6 @@ bioshield/
 │   └── BioShieldLedger.sol   ← Solidity contract (testnet notarization)
 ├── scripts/
 │   └── deploy_contract.py    ← Compiles + deploys the contract (py-solc-x, no Node/Hardhat)
-├── spikeguard/                ← Merchant fraud-spike detector (see SPIKEGUARD_REPORT.md)
 ├── requirements.txt
 ├── Procfile / render.yaml     ← Render deployment config
 ├── static/
@@ -121,8 +113,7 @@ bioshield/
     ├── enroll.html
     ├── test.html
     ├── payment.html
-    ├── dashboard.html
-    └── spikeguard_dashboard.html
+    └── dashboard.html
 ```
 
 ---
