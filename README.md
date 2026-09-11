@@ -115,13 +115,3 @@ bioshield/
     ├── payment.html
     └── dashboard.html
 ```
-
----
-
-## Production Notes
-
-- Replace SQLite with PostgreSQL via `DATABASE_URL` env var
-- Remove demo OTP from payment response (search `demo only`)
-- Replace mock Face ID in `/api/face-verify` with real ML (DeepFace / AWS Rekognition)
-- Set a strong `SECRET_KEY` and `FACE_ENCRYPTION_KEY` environment variable
-- Add HTTPS and Redis for OTP storage in front of/alongside the current rate limiting
