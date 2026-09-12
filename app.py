@@ -18,7 +18,6 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from cryptography.fernet import Fernet
-from deepface import DeepFace
 
 import blockchain
 from models import db, User, KeystrokeProfile, RiskEvent, Transaction
@@ -716,6 +715,8 @@ def face_verify():
     try:
         read_encrypted_image_to_temp(live_path_enc, live_plain)
         read_encrypted_image_to_temp(ref_path_enc, ref_plain)
+
+        from deepface import DeepFace
 
         result = DeepFace.verify(
             img1_path=ref_plain, 
