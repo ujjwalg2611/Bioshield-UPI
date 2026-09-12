@@ -27,7 +27,14 @@ from models import db, User, KeystrokeProfile, RiskEvent, Transaction
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app, supports_credentials=True)
 
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'bioshield-secret-2024-change-in-prod')
+_secret_key = os.environ.get('SECRET_KEY')
+_is_production = os.environ.get('RENDER') is not None or os.environ.get('FLASK_ENV') == 'production'
+if not _secret_key:
+    if _is_production:
+        raise RuntimeError("SECRET_KEY environment variable is required in production and is not set.")
+    _secret_key = 'bioshield-secret-2024-change-in-prod'
+    print("[WARN] SECRET_KEY not set - using an insecure dev default. Set SECRET_KEY before deploying.")
+app.config['SECRET_KEY'] = _secret_key
 
 _db_url = os.environ.get('DATABASE_URL', 'sqlite:///bioshield.db')
 # Render/Heroku-style providers hand out "postgres://" URLs, but SQLAlchemy
@@ -311,6 +318,9 @@ def notarize_transaction(txn: Transaction):
         txn.chain_status = 'SKIPPED'
         db.session.commit()
         return
+
+    txn.chain_status = 'PENDING'
+    db.session.commit()
 
     timestamp = txn.created_at.isoformat()
 
@@ -628,6 +638,7 @@ def payment():
 
 @app.route('/api/otp-verify', methods=['POST'])
 @require_auth
+@limiter.limit("5 per minute")
 def otp_verify():
     data = request.get_json()
     otp = data.get('otp', '')
@@ -677,6 +688,7 @@ def otp_verify():
 
 @app.route('/api/face-verify', methods=['POST'])
 @require_auth
+@limiter.limit("5 per minute")
 def face_verify():
     """Real Face ID verification using DeepFace"""
     data = request.get_json()

@@ -15,6 +15,8 @@ class User(db.Model):
     balance = db.Column(db.Float, default=10000.0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_enrolled = db.Column(db.Boolean, default=False)
+    failed_login_attempts = db.Column(db.Integer, default=0)
+    locked_until = db.Column(db.DateTime, nullable=True)
     
     keystroke_profile = db.relationship('KeystrokeProfile', backref='user', uselist=False, lazy=True)
     risk_events = db.relationship('RiskEvent', backref='user', lazy=True)
@@ -110,6 +112,10 @@ class Transaction(db.Model):
     txn_id = db.Column(db.String(100), unique=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    chain_status = db.Column(db.String(20), default='SKIPPED')  # SKIPPED | PENDING | CONFIRMED | FAILED
+    chain_tx_hash = db.Column(db.String(100), nullable=True)
+    chain_block_number = db.Column(db.Integer, nullable=True)
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -119,5 +125,8 @@ class Transaction(db.Model):
             'risk_level': self.risk_level,
             'auth_method': self.auth_method,
             'txn_id': self.txn_id,
-            'created_at': self.created_at.isoformat()
+            'created_at': self.created_at.isoformat(),
+            'chain_status': self.chain_status,
+            'chain_tx_hash': self.chain_tx_hash,
+            'chain_block_number': self.chain_block_number
         }
