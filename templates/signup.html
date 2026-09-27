@@ -79,6 +79,25 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="pinModal">
+    <div class="modal">
+        <h2>🔑 Your Authorization PIN</h2>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.5;">
+            This PIN is required to authorize every payment. It is shown only this once and cannot be recovered later — write it down now.
+        </p>
+
+        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: var(--warn);
+                    padding: 16px; border-radius: 8px; font-family: var(--font-mono); font-size: 1.6rem;
+                    letter-spacing: 6px; text-align: center; margin-bottom: 20px;">
+            <strong id="pinDisplay" style="color: #fff;">------</strong>
+        </div>
+
+        <button class="btn-primary" id="pinAckBtn" style="width: 100%;">
+            I've saved it — Continue
+        </button>
+    </div>
+</div>
+
 <script src="/static/keystroke.js"></script>
 <script src="/static/js/signup.js"></script>
 </body>

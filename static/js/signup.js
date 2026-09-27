@@ -122,9 +122,18 @@ document.getElementById('signupForm').addEventListener('submit', async (e) => {
 
         showAlert(`Identity Secured. Assigned ID: ${data.user.upi_id}`, 'success');
 
-        setTimeout(() => {
+        // The Authorization PIN is only ever sent to the client this once -
+        // show it and wait for explicit acknowledgement before moving on,
+        // instead of auto-redirecting past it.
+        document.getElementById('pinDisplay').textContent = data.authorization_pin || '------';
+        const pinModal = document.getElementById('pinModal');
+        pinModal.style.display = 'flex';
+        pinModal.offsetHeight;
+        pinModal.classList.add('show');
+
+        document.getElementById('pinAckBtn').addEventListener('click', () => {
             location.href = '/enroll';
-        }, 1800);
+        }, { once: true });
 
     } catch (err) {
         showAlert(err.error || 'Provisioning failed. Please retry.', 'error');

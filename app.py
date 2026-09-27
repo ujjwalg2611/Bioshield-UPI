@@ -4,6 +4,7 @@ import re
 import json
 import math
 import random
+import secrets
 import string
 import uuid
 import base64
@@ -249,6 +250,16 @@ def build_baseline_from_samples(samples: list) -> dict:
     }
 
 
+def generate_unique_pin() -> str:
+    """6-digit payment Authorization PIN using a CSPRNG (not `random`, which
+    is predictable). 'Unique' here means independently, randomly assigned per
+    account with enough entropy (1M possibilities, bcrypt-hashed, rate-limited
+    at verification) that guessing/collision isn't practically checkable
+    against other users' PINs once hashed - the same trust model as the login
+    passphrase."""
+    return ''.join(secrets.choice(string.digits) for _ in range(6))
+
+
 def generate_otp(user_id: int) -> str:
     otp = ''.join(random.choices(string.digits, k=6))
     otp_store[user_id] = {
@@ -395,12 +406,46 @@ def signup():
     pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     upi_id = f"{full_name.split()[0].lower()}{random.randint(100,999)}@bioshield"
 
-    user = User(email=email, password_hash=pw_hash, full_name=full_name, upi_id=upi_id)
+    # Every account gets its own unique 6-digit payment Authorization PIN,
+    # generated server-side (never user-chosen, so it can't be a reused/weak
+    # password). Only the bcrypt hash is persisted - the plaintext PIN is
+    # returned to the client exactly once, in this response, and is
+    # unrecoverable afterwards (matches how the passphrase itself is handled).
+    raw_pin = generate_unique_pin()
+    pin_hash = bcrypt.hashpw(raw_pin.encode(), bcrypt.gensalt()).decode()
+
+    user = User(email=email, password_hash=pw_hash, pin_hash=pin_hash, full_name=full_name, upi_id=upi_id)
     db.session.add(user)
     db.session.commit()
 
     token = generate_token(user.id)
-    return jsonify({'token': token, 'user': user.to_dict()}), 201
+    return jsonify({
+        'token': token,
+        'user': user.to_dict(),
+        'authorization_pin': raw_pin,
+        '_pin_warning': 'Store this PIN now - it will not be shown again and is required for every payment.'
+    }), 201
+
+
+@app.route('/api/pin/setup', methods=['POST'])
+@require_auth
+@limiter.limit("5 per minute")
+def pin_setup():
+    """One-time issuance for accounts created before Authorization PINs
+    existed (pin_hash is NULL). Does nothing for accounts that already have
+    a PIN - use a dedicated reset/forgot-PIN flow for that, not this."""
+    user = db.session.get(User, request.user_id)
+    if user.pin_hash:
+        return jsonify({'error': 'An Authorization PIN is already set on this account.'}), 409
+
+    raw_pin = generate_unique_pin()
+    user.pin_hash = bcrypt.hashpw(raw_pin.encode(), bcrypt.gensalt()).decode()
+    db.session.commit()
+
+    return jsonify({
+        'authorization_pin': raw_pin,
+        '_pin_warning': 'Store this PIN now - it will not be shown again and is required for every payment.'
+    }), 201
 
 
 @app.route('/api/login', methods=['POST'])
@@ -549,6 +594,7 @@ def payment():
     data = request.get_json()
     recipient_upi = data.get('recipient_upi', '').strip()
     amount = float(data.get('amount', 0))
+    pin = data.get('pin', '')
     keystroke_data = data.get('keystroke_data', {})
 
     if not recipient_upi or amount <= 0:
@@ -559,6 +605,16 @@ def payment():
         return jsonify({'error': 'Amount exceeds maximum transaction limit of ₹100,000'}), 400
 
     user = db.session.get(User, request.user_id)
+
+    # Authorization PIN is the base factor for every payment - checked before
+    # balance/risk so a wrong PIN never gets as far as the biometric model.
+    # bcrypt.checkpw is constant-time; the endpoint's own rate limit above
+    # (20/min) bounds brute-force attempts.
+    if not user.pin_hash:
+        return jsonify({'error': 'No Authorization PIN is set up on this account.'}), 400
+    if not pin or not bcrypt.checkpw(pin.encode(), user.pin_hash.encode()):
+        return jsonify({'error': 'Incorrect Authorization PIN'}), 401
+
     if user.balance < amount:
         return jsonify({'error': 'Insufficient balance'}), 400
 
