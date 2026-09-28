@@ -15,7 +15,7 @@ function formatTs(iso) {
 }
 
 function getBadgeProps(status) {
-    if (['ALLOW', 'SUCCESS', 'PASSED_BIOMETRIC', 'BIOMETRIC'].includes(status)) return { class: 'badge-success', text: status };
+    if (['ALLOW', 'SUCCESS', 'PASSED_BIOMETRIC', 'BIOMETRIC', 'PIN_BIOMETRIC', 'FACE_ID', 'FACE_VERIFIED'].includes(status)) return { class: 'badge-success', text: status };
     if (['OTP_REQUIRED', 'OTP', 'OTP_VERIFIED'].includes(status)) return { class: 'badge-warn', text: status };
     return { class: 'badge-danger', text: status || 'FAILED' };
 }

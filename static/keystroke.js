@@ -247,9 +247,10 @@ const BioShieldAPI = {
   login(payload)       { return this.request('/api/login',      'POST', payload); },
   enroll(payload)      { return this.request('/api/enroll',     'POST', payload); },
   test(payload)        { return this.request('/api/test',       'POST', payload); },
-  payment(payload)     { return this.request('/api/payment',    'POST', payload); },
-  otpVerify(payload)   { return this.request('/api/otp-verify', 'POST', payload); },
-  faceVerify(payload)  { return this.request('/api/face-verify','POST', payload); },
+  paymentInitiate(p)   { return this.request('/api/payment/initiate', 'POST', p); },
+  paymentFace(p)       { return this.request('/api/payment/face',     'POST', p); },
+  paymentPin(p)        { return this.request('/api/payment/pin',      'POST', p); },
+  paymentOtp(p)        { return this.request('/api/payment/otp',      'POST', p); },
   riskHistory()        { return this.request('/api/risk-history'); },
 };
 

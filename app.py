@@ -3,6 +3,7 @@ import os
 import re
 import json
 import math
+import hmac
 import random
 import secrets
 import string
@@ -53,7 +54,6 @@ limiter = Limiter(get_remote_address, app=app, default_limits=["200 per hour"])
 # in the API response - only sent through a real out-of-band channel.
 DEMO_MODE = os.environ.get('DEMO_MODE', 'false').lower() == 'true'
 
-otp_store = {}
 
 FACE_STORAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__name__)), 'face_data')
 os.makedirs(FACE_STORAGE_DIR, exist_ok=True)
@@ -260,64 +260,131 @@ def generate_unique_pin() -> str:
     return ''.join(secrets.choice(string.digits) for _ in range(6))
 
 
-def generate_otp(user_id: int) -> str:
-    otp = ''.join(random.choices(string.digits, k=6))
-    otp_store[user_id] = {
-        'otp': otp,
-        'expires_at': datetime.utcnow() + timedelta(minutes=5)
-    }
-    return otp
+PIN_MAX_ATTEMPTS = 3
+OTP_MAX_ATTEMPTS = 3
+OTP_TTL = timedelta(minutes=5)
+PAYMENT_TTL = timedelta(minutes=10)
 
 
-def send_otp_email(user, otp):
-    """Send the OTP via real email if SMTP is configured; otherwise just log
-    it server-side (simulated send) so local dev keeps working without any
-    email provider set up."""
+def normalize_phone(raw):
+    """10-digit Indian numbers get +91; otherwise require E.164 (+, 10-15 digits)."""
+    digits = re.sub(r'[\s\-()]', '', raw or '')
+    if re.fullmatch(r'[6-9]\d{9}', digits):
+        return '+91' + digits
+    if re.fullmatch(r'\+\d{10,15}', digits):
+        return digits
+    return None
+
+
+def mask_phone(phone):
+    return phone[:3] + '*' * (len(phone) - 7) + phone[-4:]
+
+
+def get_pending_event(user_id: int, event_id, stage: str):
+    """Row-locked fetch of the caller's own unresolved payment, only if it is
+    currently at `stage`. Amount/recipient always come from this stored event
+    (never the client), so a step-up endpoint can only finish a payment that
+    /api/payment/initiate created, and each payment resolves exactly once."""
+    try:
+        event_id = int(event_id)
+    except (TypeError, ValueError):
+        return None
+    event = (db.session.query(RiskEvent).filter_by(id=event_id)
+             .with_for_update().first())
+    if (not event or event.user_id != user_id or event.event_type != 'PAYMENT'
+            or event.resolution is not None or event.stage != stage):
+        return None
+    if event.created_at < datetime.utcnow() - PAYMENT_TTL:
+        event.resolution = 'EXPIRED'
+        db.session.commit()
+        return None
+    return event
+
+
+def otp_digest(event_id: int, otp: str) -> str:
+    return hmac.new(app.config['SECRET_KEY'].encode(),
+                    f"{event_id}:{otp}".encode(), 'sha256').hexdigest()
+
+
+def send_otp(user, otp: str) -> str:
+    """Deliver the OTP to the registered mobile via SMS (Twilio) when
+    configured; otherwise fall back to email, then to a console log for local
+    dev. Returns the channel actually used: SMS | EMAIL | LOG."""
+    sid = os.environ.get('TWILIO_ACCOUNT_SID')
+    token = os.environ.get('TWILIO_AUTH_TOKEN')
+    sender = os.environ.get('TWILIO_FROM')
+    if user.phone and sid and token and sender:
+        try:
+            import urllib.request, urllib.parse
+            body = urllib.parse.urlencode({
+                'To': user.phone, 'From': sender,
+                'Body': f"Your BioShield-UPI payment code is {otp}. Valid for 5 minutes. Never share it."
+            }).encode()
+            req = urllib.request.Request(
+                f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json", data=body)
+            auth = base64.b64encode(f"{sid}:{token}".encode()).decode()
+            req.add_header('Authorization', f'Basic {auth}')
+            urllib.request.urlopen(req, timeout=10).read()
+            return 'SMS'
+        except Exception as e:
+            print(f"[OTP] SMS send failed ({e}) - trying email fallback")
+
     smtp_host = os.environ.get('SMTP_HOST')
     smtp_user = os.environ.get('SMTP_USER')
     smtp_password = os.environ.get('SMTP_PASSWORD')
+    if smtp_host and smtp_user and smtp_password:
+        try:
+            import smtplib
+            from email.mime.text import MIMEText
+            msg = MIMEText(f"Your BioShield-UPI verification code is: {otp}\n\n"
+                           f"This code expires in 5 minutes. If you didn't request this, "
+                           f"someone may be trying to use your account.")
+            msg['Subject'] = 'Your BioShield-UPI verification code'
+            msg['From'] = smtp_user
+            msg['To'] = user.email
+            with smtplib.SMTP(smtp_host, int(os.environ.get('SMTP_PORT', '587')), timeout=10) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+                server.sendmail(smtp_user, [user.email], msg.as_string())
+            return 'EMAIL'
+        except Exception as e:
+            print(f"[OTP] Email send failed ({e})")
 
-    if not (smtp_host and smtp_user and smtp_password):
-        print(f"[OTP] (simulated send - SMTP not configured) OTP for {user.email}: {otp}")
-        return
-
-    try:
-        import smtplib
-        from email.mime.text import MIMEText
-
-        smtp_port = int(os.environ.get('SMTP_PORT', '587'))
-        msg = MIMEText(
-            f"Your BioShield-UPI verification code is: {otp}\n\n"
-            f"This code expires in 5 minutes. If you didn't request this, "
-            f"someone may be trying to access your account."
-        )
-        msg['Subject'] = 'Your BioShield-UPI verification code'
-        msg['From'] = smtp_user
-        msg['To'] = user.email
-
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.sendmail(smtp_user, [user.email], msg.as_string())
-        print(f"[OTP] Email sent to {user.email}")
-    except Exception as e:
-        # Never let a flaky email provider break the payment flow - fall back
-        # to the console log so the user (in dev) can still see/use the OTP.
-        print(f"[OTP] Email send failed ({e}) - falling back to console log. OTP: {otp}")
+    print(f"[OTP] (simulated send - no SMS/SMTP configured) OTP for user {user.id}: {otp}")
+    return 'LOG'
 
 
-def verify_otp(user_id: int, otp: str) -> bool:
-    record = otp_store.get(user_id)
-    if not record:
-        return False
-    if datetime.utcnow() > record['expires_at']:
-        del otp_store[user_id]
-        return False
-    if record['otp'] != otp:
-        return False
-    del otp_store[user_id]
-    return True
+def finalize_payment(user_id: int, event, auth_method: str, resolution: str, risk_label: str):
+    """Move the money and close the event. Returns (txn, user); (None, None)
+    if the balance no longer covers it. Locks the user row against races."""
+    user = db.session.query(User).filter_by(id=user_id).with_for_update().one()
+    if user.balance < event.amount:
+        event.resolution = 'FAILED_BALANCE'
+        db.session.commit()
+        return None, None
+    txn = Transaction(
+        user_id=user.id, recipient_upi=event.recipient, amount=event.amount,
+        status='SUCCESS', risk_level=risk_label, auth_method=auth_method,
+        txn_id='TXN' + uuid.uuid4().hex[:12].upper()
+    )
+    user.balance -= event.amount
+    event.resolution = resolution
+    event.stage = 'DONE'
+    db.session.add(txn)
+    db.session.commit()
+    notarize_transaction(txn)
+    return txn, user
 
+
+def success_response(txn, user, auth_method, **extra):
+    body = {
+        'status': 'SUCCESS', 'txn_id': txn.txn_id, 'amount': txn.amount,
+        'recipient': txn.recipient_upi, 'new_balance': user.balance,
+        'auth_method': auth_method,
+        'chain_status': 'PENDING' if blockchain.is_enabled() else 'SKIPPED'
+    }
+    body.update(extra)
+    return jsonify(body)
 
 
 def notarize_transaction(txn: Transaction):
@@ -396,9 +463,12 @@ def signup():
     email = data.get('email', '').strip().lower()
     password = data.get('password', '')
     full_name = data.get('full_name', '').strip()
-    
+    phone = normalize_phone(data.get('phone', ''))
+
     if not all([email, password, full_name]):
         return jsonify({'error': 'All fields are required'}), 400
+    if not phone:
+        return jsonify({'error': 'Enter a valid mobile number (10 digits, or +country code)'}), 400
 
     if User.query.filter_by(email=email).first():
         return jsonify({'error': 'Email already registered'}), 409
@@ -414,7 +484,7 @@ def signup():
     raw_pin = generate_unique_pin()
     pin_hash = bcrypt.hashpw(raw_pin.encode(), bcrypt.gensalt()).decode()
 
-    user = User(email=email, password_hash=pw_hash, pin_hash=pin_hash, full_name=full_name, upi_id=upi_id)
+    user = User(email=email, password_hash=pw_hash, pin_hash=pin_hash, phone=phone, full_name=full_name, upi_id=upi_id)
     db.session.add(user)
     db.session.commit()
 
@@ -446,6 +516,24 @@ def pin_setup():
         'authorization_pin': raw_pin,
         '_pin_warning': 'Store this PIN now - it will not be shown again and is required for every payment.'
     }), 201
+
+
+@app.route('/api/phone/setup', methods=['POST'])
+@require_auth
+@limiter.limit("5 per minute")
+def phone_setup():
+    """For accounts created before mobile numbers were collected. Only works
+    while no number is on file - changing an existing number needs a proper
+    re-verification flow, otherwise a stolen session could redirect OTPs."""
+    user = db.session.get(User, request.user_id)
+    if user.phone:
+        return jsonify({'error': 'A mobile number is already registered.'}), 409
+    phone = normalize_phone((request.get_json() or {}).get('phone', ''))
+    if not phone:
+        return jsonify({'error': 'Enter a valid mobile number'}), 400
+    user.phone = phone
+    db.session.commit()
+    return jsonify({'phone': mask_phone(phone)}), 201
 
 
 @app.route('/api/login', methods=['POST'])
@@ -587,17 +675,21 @@ def test_recognition():
 
 
 
-@app.route('/api/payment', methods=['POST'])
+@app.route('/api/payment/initiate', methods=['POST'])
 @require_auth
 @limiter.limit("20 per minute")
-def payment():
-    data = request.get_json()
-    recipient_upi = data.get('recipient_upi', '').strip()
-    amount = float(data.get('amount', 0))
-    pin = data.get('pin', '')
-    keystroke_data = data.get('keystroke_data', {})
+def payment_initiate():
+    """Step 0: validate the transfer and open a pending payment. Nothing moves
+    until the caller clears FACE (or PIN fallback) and, if typing rhythm
+    mismatches, OTP."""
+    data = request.get_json() or {}
+    recipient_upi = str(data.get('recipient_upi', '')).strip()
+    try:
+        amount = float(data.get('amount', 0))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Invalid payment details'}), 400
 
-    if not recipient_upi or amount <= 0:
+    if not recipient_upi or not math.isfinite(amount) or amount <= 0:
         return jsonify({'error': 'Invalid payment details'}), 400
     if not re.match(r'^[\w.+-]{2,256}@[a-zA-Z]{2,64}$', recipient_upi):
         return jsonify({'error': 'Invalid UPI ID format'}), 400
@@ -605,231 +697,194 @@ def payment():
         return jsonify({'error': 'Amount exceeds maximum transaction limit of ₹100,000'}), 400
 
     user = db.session.get(User, request.user_id)
-
-    # Authorization PIN is the base factor for every payment - checked before
-    # balance/risk so a wrong PIN never gets as far as the biometric model.
-    # bcrypt.checkpw is constant-time; the endpoint's own rate limit above
-    # (20/min) bounds brute-force attempts.
-    if not user.pin_hash:
-        return jsonify({'error': 'No Authorization PIN is set up on this account.'}), 400
-    if not pin or not bcrypt.checkpw(pin.encode(), user.pin_hash.encode()):
-        return jsonify({'error': 'Incorrect Authorization PIN'}), 401
-
     if user.balance < amount:
         return jsonify({'error': 'Insufficient balance'}), 400
 
-    features = extract_features(keystroke_data)
-    profile = KeystrokeProfile.query.filter_by(user_id=request.user_id).first()
-    risk = predict_risk(features, profile)
+    # A new attempt cancels any older unfinished one.
+    RiskEvent.query.filter_by(user_id=user.id, event_type='PAYMENT', resolution=None) \
+        .update({'resolution': 'SUPERSEDED'})
 
+    has_face = os.path.exists(os.path.join(FACE_STORAGE_DIR, f"user_{user.id}_ref.enc"))
     event = RiskEvent(
-        user_id=request.user_id, event_type='PAYMENT',
-        risk_level=risk['decision'], risk_score=risk['score'],
-        features_snapshot=json.dumps(features),
-        amount=amount, recipient=recipient_upi
+        user_id=user.id, event_type='PAYMENT', risk_level='PENDING', risk_score=0.0,
+        amount=amount, recipient=recipient_upi,
+        stage='FACE' if has_face else 'PIN', pin_attempts=0, otp_attempts=0
     )
     db.session.add(event)
     db.session.commit()
 
-    if risk['decision'] == 'BLOCK':
-        event.resolution = 'BLOCKED'
-        db.session.commit()
-        return jsonify({
-            'status': 'BLOCKED',
-            'message': 'Transaction blocked due to suspicious behaviour',
-            'risk_score': round(risk['score'], 3),
-            'event_id': event.id
-        }), 403
-
-    if risk['decision'] == 'OTP_REQUIRED':
-        otp = generate_otp(request.user_id)
-        # SECURITY: the OTP itself must never be returned to the client - that
-        # defeats the entire point of a second factor. If SMTP_* env vars are
-        # set it's actually emailed to the user; otherwise it's logged
-        # server-side as a simulated send. DEMO_MODE surfaces it in the
-        # response ONLY for local testing without any email provider set up.
-        send_otp_email(user, otp)
-        response = {
-            'status': 'OTP_REQUIRED',
-            'message': 'OTP sent to your registered mobile number',
-            'risk_score': round(risk['score'], 3),
-            'event_id': event.id
-        }
-        if DEMO_MODE:
-            response['otp'] = otp
-            response['_demo_mode_warning'] = 'OTP included because DEMO_MODE=true - disable in production'
-        return jsonify(response), 200
-
-    txn_id = 'TXN' + uuid.uuid4().hex[:12].upper()
-    txn = Transaction(
-        user_id=request.user_id, recipient_upi=recipient_upi,
-        amount=amount, status='SUCCESS',
-        risk_level=risk['decision'], auth_method='BIOMETRIC',
-        txn_id=txn_id
-    )
-    user.balance -= amount
-    event.resolution = 'PASSED_BIOMETRIC'
-    db.session.add(txn)
-    db.session.commit()
-
-    if profile:
-        update_profile_moving_average(profile, features)
-        db.session.commit()
-
-    notarize_transaction(txn)
-
-    return jsonify({
-        'status': 'SUCCESS',
-        'txn_id': txn_id,
-        'amount': amount,
-        'recipient': recipient_upi,
-        'new_balance': user.balance,
-        'risk_score': round(risk['score'], 3),
-        'auth_method': 'BIOMETRIC',
-        'chain_status': 'PENDING' if blockchain.is_enabled() else 'SKIPPED'
-    })
+    if has_face:
+        return jsonify({'status': 'FACE_REQUIRED', 'event_id': event.id,
+                        'message': 'Look at the camera to verify your face.'})
+    return jsonify({'status': 'PIN_REQUIRED', 'event_id': event.id,
+                    'message': 'No enrolled face found. Enter your Authorization PIN.'})
 
 
-
-@app.route('/api/otp-verify', methods=['POST'])
+@app.route('/api/payment/face', methods=['POST'])
 @require_auth
 @limiter.limit("5 per minute")
-def otp_verify():
-    data = request.get_json()
-    otp = data.get('otp', '')
-    event_id = data.get('event_id')
-    amount = float(data.get('amount', 0))
-    recipient_upi = data.get('recipient_upi', '')
+def payment_face():
+    """Step 1: face match against the enrolled profile photo. Match -> paid.
+    Genuine mismatch -> fall back to the Authorization PIN."""
+    data = request.get_json() or {}
+    event = get_pending_event(request.user_id, data.get('event_id'), 'FACE')
+    if not event:
+        return jsonify({'error': 'No pending payment to verify'}), 400
 
-    if not verify_otp(request.user_id, otp):
-        return jsonify({'error': 'Invalid or expired OTP'}), 400
-
-
-    user = db.session.get(User, request.user_id)
-    if user.balance < amount:
-        return jsonify({'error': 'Insufficient balance'}), 400
-
-    txn_id = 'TXN' + uuid.uuid4().hex[:12].upper()
-    txn = Transaction(
-        user_id=request.user_id, recipient_upi=recipient_upi,
-        amount=amount, status='SUCCESS',
-        risk_level='OTP_VERIFIED', auth_method='OTP',
-        txn_id=txn_id
-    )
-    user.balance -= amount
-
-    if event_id:
-
-        event = db.session.get(RiskEvent, event_id)
-        if event:
-            event.resolution = 'PASSED_OTP'
-
-    db.session.add(txn)
-    db.session.commit()
-
-    notarize_transaction(txn)
-
-    return jsonify({
-        'status': 'SUCCESS',
-        'txn_id': txn_id,
-        'amount': amount,
-        'recipient': recipient_upi,
-        'new_balance': user.balance,
-        'auth_method': 'OTP',
-        'chain_status': 'PENDING' if blockchain.is_enabled() else 'SKIPPED'
-    })
-
-
-
-@app.route('/api/face-verify', methods=['POST'])
-@require_auth
-@limiter.limit("5 per minute")
-def face_verify():
-    """Real Face ID verification using DeepFace"""
-    data = request.get_json()
-    live_face_b64 = data.get('face_image', '')   
-    event_id = data.get('event_id')
-    amount = float(data.get('amount', 0))
-    recipient_upi = data.get('recipient_upi', '')
-
-
-    # live_path_enc holds the encrypted-at-rest copy; live_plain is the
-    # decrypted temp copy DeepFace actually reads. Both get deleted below.
     live_path_enc = os.path.join(FACE_STORAGE_DIR, f"temp_{request.user_id}_live.enc")
     live_plain = os.path.join(FACE_STORAGE_DIR, f"temp_{request.user_id}_live_plain.jpg")
     ref_path_enc = os.path.join(FACE_STORAGE_DIR, f"user_{request.user_id}_ref.enc")
     ref_plain = os.path.join(FACE_STORAGE_DIR, f"temp_{request.user_id}_ref_plain.jpg")
+    temp_files = (live_path_enc, live_plain, ref_plain)
 
-    save_base64_image(live_face_b64, live_path_enc)
+    def scrub():
+        for path in temp_files:
+            if os.path.exists(path):
+                os.remove(path)
+
+    try:
+        save_base64_image(data.get('face_image', ''), live_path_enc)
+    except Exception:
+        scrub()
+        return jsonify({'error': 'Could not read the camera image. Try again.'}), 400
 
     if not os.path.exists(ref_path_enc):
-        for p in (live_path_enc, live_plain):
-            if os.path.exists(p):
-                os.remove(p)
-        return jsonify({'error': 'No reference face found. Please enroll your face first.'}), 400
+        scrub()
+        event.stage = 'PIN'
+        db.session.commit()
+        return jsonify({'status': 'PIN_REQUIRED', 'face_matched': False, 'event_id': event.id,
+                        'message': 'No enrolled face found. Enter your Authorization PIN.'})
 
     try:
         read_encrypted_image_to_temp(live_path_enc, live_plain)
         read_encrypted_image_to_temp(ref_path_enc, ref_plain)
-
         from deepface import DeepFace
-
         result = DeepFace.verify(
-            img1_path=ref_plain, 
-            img2_path=live_plain, 
-            model_name="VGG-Face",
-            enforce_detection=False 
+            img1_path=ref_plain, img2_path=live_plain,
+            model_name="VGG-Face", enforce_detection=True
         )
-        face_matched = result["verified"]
-        confidence = 1.0 - result["distance"] 
-
+        face_matched = bool(result["verified"])
+        confidence = 1.0 - result["distance"]
+    except ValueError:
+        return jsonify({'error': 'No face detected. Look at the camera and try again.'}), 400
     except Exception as e:
         print("DeepFace Error:", e)
         return jsonify({'error': 'Face ML processing failed'}), 500
     finally:
-        # Always scrub every plaintext/temp face file, matched or not.
-        for p in (live_path_enc, live_plain, ref_plain):
-            if os.path.exists(p):
-                os.remove(p)
+        scrub()
 
     if not face_matched:
-        return jsonify({'error': 'Face verification failed. Identity mismatch.', 'confidence': confidence}), 403
+        event.stage = 'PIN'
+        db.session.commit()
+        return jsonify({'status': 'PIN_REQUIRED', 'face_matched': False, 'event_id': event.id,
+                        'message': 'Face did not match. Enter your Authorization PIN instead.'})
+
+    event.risk_level = 'FACE_VERIFIED'
+    txn, user = finalize_payment(request.user_id, event, 'FACE_ID', 'PASSED_FACE', 'FACE_VERIFIED')
+    if not txn:
+        return jsonify({'error': 'Insufficient balance'}), 400
+    return success_response(txn, user, 'FACE_ID', confidence=round(confidence, 3))
+
+
+@app.route('/api/payment/pin', methods=['POST'])
+@require_auth
+@limiter.limit("10 per minute")
+def payment_pin():
+    """Step 2 (fallback): Authorization PIN set at signup, plus typing-rhythm
+    check on how the PIN was typed. Rhythm matches -> paid. Rhythm mismatch
+    -> OTP to the registered mobile."""
+    data = request.get_json() or {}
+    event = get_pending_event(request.user_id, data.get('event_id'), 'PIN')
+    if not event:
+        return jsonify({'error': 'No pending payment to verify'}), 400
 
     user = db.session.get(User, request.user_id)
-    if user.balance < amount:
-        return jsonify({'error': 'Insufficient balance'}), 400
+    if not user.pin_hash:
+        return jsonify({'error': 'No Authorization PIN is set up on this account.'}), 400
 
-    txn_id = 'TXN' + uuid.uuid4().hex[:12].upper()
-    txn = Transaction(
-        user_id=request.user_id, recipient_upi=recipient_upi,
-        amount=amount, status='SUCCESS',
-        risk_level='FACE_VERIFIED', auth_method='FACE_ID',
-        txn_id=txn_id
-    )
-    user.balance -= amount
+    pin = str(data.get('pin', ''))
+    if not pin or not bcrypt.checkpw(pin.encode(), user.pin_hash.encode()):
+        event.pin_attempts = (event.pin_attempts or 0) + 1
+        left = PIN_MAX_ATTEMPTS - event.pin_attempts
+        if left <= 0:
+            event.resolution = 'FAILED_PIN'
+            db.session.commit()
+            return jsonify({'error': 'Too many incorrect PIN attempts. Transaction cancelled.',
+                            'terminated': True}), 403
+        db.session.commit()
+        return jsonify({'error': f'Incorrect Authorization PIN. {left} attempt(s) left.',
+                        'attempts_left': left}), 401
 
-    if event_id:
-        event = db.session.get(RiskEvent, event_id)
-        if event:
-            event.resolution = 'PASSED_FACE'
+    features = extract_features(data.get('keystroke_data', {}))
+    profile = KeystrokeProfile.query.filter_by(user_id=user.id).first()
+    risk = predict_risk(features, profile)
+    event.risk_score = risk['score']
+    event.features_snapshot = json.dumps(features)
 
-    db.session.add(txn)
+    if risk['decision'] == 'ALLOW':
+        event.risk_level = 'ALLOW'
+        txn, user = finalize_payment(user.id, event, 'PIN_BIOMETRIC', 'PASSED_PIN', 'ALLOW')
+        if not txn:
+            return jsonify({'error': 'Insufficient balance'}), 400
+        if profile:
+            update_profile_moving_average(profile, features)
+            db.session.commit()
+        return success_response(txn, user, 'PIN_BIOMETRIC', risk_score=round(risk['score'], 3))
+
+    # PIN correct but typing rhythm doesn't match -> second factor: OTP.
+    otp = ''.join(secrets.choice(string.digits) for _ in range(6))
+    event.risk_level = 'OTP_REQUIRED'
+    event.stage = 'OTP'
+    event.otp_hash = otp_digest(event.id, otp)
+    event.otp_expires_at = datetime.utcnow() + OTP_TTL
+    event.otp_attempts = 0
     db.session.commit()
 
-    notarize_transaction(txn)
+    channel = send_otp(user, otp)
+    response = {
+        'status': 'OTP_REQUIRED', 'event_id': event.id,
+        'risk_score': round(risk['score'], 3), 'channel': channel,
+        'sent_to': mask_phone(user.phone) if (user.phone and channel == 'SMS') else None,
+        'message': 'Typing pattern mismatch. Enter the one-time code sent to your registered mobile number.'
+    }
+    if DEMO_MODE:
+        response['otp'] = otp
+        response['_demo_mode_warning'] = 'OTP included because DEMO_MODE=true - disable in production'
+    return jsonify(response)
 
-    return jsonify({
-        'status': 'SUCCESS',
-        'txn_id': txn_id,
-        'amount': amount,
-        'recipient': recipient_upi,
-        'new_balance': user.balance,
-        'confidence': round(confidence, 3),
-        'auth_method': 'FACE_ID',
-        'chain_status': 'PENDING' if blockchain.is_enabled() else 'SKIPPED'
-    })
 
+@app.route('/api/payment/otp', methods=['POST'])
+@require_auth
+@limiter.limit("10 per minute")
+def payment_otp():
+    """Step 3: one-time code sent to the registered mobile."""
+    data = request.get_json() or {}
+    event = get_pending_event(request.user_id, data.get('event_id'), 'OTP')
+    if not event:
+        return jsonify({'error': 'No pending payment to verify'}), 400
 
+    if not event.otp_hash or not event.otp_expires_at or datetime.utcnow() > event.otp_expires_at:
+        event.resolution = 'EXPIRED'
+        db.session.commit()
+        return jsonify({'error': 'Code expired. Start the transfer again.', 'terminated': True}), 403
+
+    otp = str(data.get('otp', ''))
+    if not hmac.compare_digest(otp_digest(event.id, otp), event.otp_hash):
+        event.otp_attempts = (event.otp_attempts or 0) + 1
+        left = OTP_MAX_ATTEMPTS - event.otp_attempts
+        if left <= 0:
+            event.resolution = 'FAILED_OTP'
+            db.session.commit()
+            return jsonify({'error': 'Too many incorrect codes. Transaction cancelled.',
+                            'terminated': True}), 403
+        db.session.commit()
+        return jsonify({'error': f'Incorrect code. {left} attempt(s) left.',
+                        'attempts_left': left}), 401
+
+    txn, user = finalize_payment(request.user_id, event, 'OTP', 'PASSED_OTP', 'OTP_VERIFIED')
+    if not txn:
+        return jsonify({'error': 'Insufficient balance'}), 400
+    return success_response(txn, user, 'OTP')
 
 
 @app.route('/api/risk-history', methods=['GET'])
@@ -890,8 +945,35 @@ def health():
     return jsonify({'status': 'ok', 'service': 'BioShield'})
 
 
+def run_light_migrations():
+    """db.create_all() never alters existing tables, so add any new columns
+    ourselves. Idempotent; safe if two gunicorn workers race at startup."""
+    from sqlalchemy import inspect, text
+    wanted = {
+        'users': {'pin_hash': 'VARCHAR(255)', 'phone': 'VARCHAR(20)'},
+        'risk_events': {
+            'stage': 'VARCHAR(10)', 'pin_attempts': 'INTEGER DEFAULT 0',
+            'otp_hash': 'VARCHAR(64)', 'otp_expires_at': 'TIMESTAMP',
+            'otp_attempts': 'INTEGER DEFAULT 0',
+        },
+    }
+    insp = inspect(db.engine)
+    for table, cols in wanted.items():
+        if not insp.has_table(table):
+            continue
+        existing = {c['name'] for c in insp.get_columns(table)}
+        for name, ddl in cols.items():
+            if name not in existing:
+                try:
+                    db.session.execute(text(f'ALTER TABLE {table} ADD COLUMN {name} {ddl}'))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+
+
 with app.app_context():
     db.create_all()
+    run_light_migrations()
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

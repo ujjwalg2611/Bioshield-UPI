@@ -17,7 +17,7 @@
         <div class="brand-icon">₹</div>
         <div>
             <h1 class="brand-title">Secure Transfer</h1>
-            <p class="brand-subtitle">Keystroke telemetry active</p>
+            <p class="brand-subtitle">Face ID first · PIN as fallback</p>
         </div>
     </a>
 
@@ -40,17 +40,6 @@
             <input type="number" id="amount" placeholder="0.00" min="1" step="0.01" required>
         </div>
 
-        <div class="form-group">
-            <label>
-                <span>Authorization PIN</span>
-                <span style="color:var(--success);">Type Naturally</span>
-            </label>
-            <input type="password" id="pin_input" placeholder="••••••" maxlength="6" 
-                   inputmode="numeric" autocomplete="off" required>
-        </div>
-
-        <div id="biometric-hud"></div>
-
         <button type="submit" class="btn btn-success" id="payBtn">
             <span id="payBtnText">Authorize Transfer</span>
             <span id="paySpinner" class="spinner" style="display:none; width:16px; height:16px; border-width:2px; margin-left:8px;"></span>
@@ -65,18 +54,56 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="faceModal">
+    <div class="modal">
+        <h2>🪪 Verify It's You</h2>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
+            Look at the camera. We'll match your face to your enrolled profile photo.
+        </p>
+        <div style="border-radius: 12px; overflow: hidden; border: 2px solid var(--border); margin-bottom: 20px;">
+            <video id="face-video" autoplay playsinline muted style="width: 100%; display: block; background: #000;"></video>
+        </div>
+        <canvas id="face-canvas" style="display:none;"></canvas>
+        <button class="btn btn-primary" id="captureBtn" style="margin-bottom: 12px;" disabled>Capture & Authorize</button>
+        <button class="btn btn-outline" id="cancelFaceBtn">Cancel Transfer</button>
+        <div id="faceAlert" class="alert"></div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="pinModal">
+    <div class="modal">
+        <h2>🔑 Authorization PIN</h2>
+        <p id="pinMsg" style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px; line-height: 1.5;">
+            Enter the PIN you received when you created your account.
+        </p>
+        <div class="form-group">
+            <label>
+                <span>PIN</span>
+                <span style="color:var(--success);">Type Naturally</span>
+            </label>
+            <input type="password" id="pin_input" placeholder="••••••" maxlength="6"
+                   inputmode="numeric" autocomplete="off">
+        </div>
+        <div id="biometric-hud"></div>
+        <button class="btn btn-primary" id="pinSubmitBtn" style="margin-bottom: 12px;">
+            <span id="pinBtnText">Verify PIN</span>
+            <span id="pinSpinner" class="spinner" style="display:none; width:16px; height:16px; border-width:2px;"></span>
+        </button>
+        <button class="btn btn-outline" id="cancelPinBtn">Cancel Transfer</button>
+        <div id="pinAlert" class="alert"></div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="otpModal">
     <div class="modal">
-        <h2>⚠ Step-Up Authentication</h2>
-        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.5;">
-            Anomalous typing behavior detected. Verify this transaction using the OTP sent to your registered device.
+        <h2>⚠ One-Time Code</h2>
+        <p id="otpMsg" style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px; line-height: 1.5;">
+            Your typing pattern didn't match your profile. Enter the code sent to your registered mobile number.
         </p>
-
-        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: var(--warn); 
+        <div id="demoOtpBox" style="display:none; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: var(--warn);
                     padding: 12px 16px; border-radius: 8px; font-family: var(--font-mono); font-size: 0.85rem; margin-bottom: 20px;">
-            Demo Override Code: <strong id="demoOtp" style="color: #fff;">—</strong>
+            Demo code (DEMO_MODE only): <strong id="demoOtp" style="color: #fff;">—</strong>
         </div>
-
         <div class="otp-inputs">
             <input type="text" maxlength="1" class="otp-digit" inputmode="numeric">
             <input type="text" maxlength="1" class="otp-digit" inputmode="numeric">
@@ -85,41 +112,12 @@
             <input type="text" maxlength="1" class="otp-digit" inputmode="numeric">
             <input type="text" maxlength="1" class="otp-digit" inputmode="numeric">
         </div>
-
         <button class="btn btn-primary" id="otpSubmitBtn" style="margin-bottom: 12px;">
             <span id="otpBtnText">Verify & Transfer</span>
             <span id="otpSpinner" class="spinner" style="display:none; width:16px; height:16px; border-width:2px;"></span>
         </button>
-
-        <button class="btn btn-outline" id="openFaceBtn">
-            Use Face Biometrics Instead
-        </button>
-
+        <button class="btn btn-outline" id="cancelOtpBtn">Cancel Transfer</button>
         <div id="otpAlert" class="alert"></div>
-    </div>
-</div>
-
-<div class="modal-overlay" id="faceModal">
-    <div class="modal">
-        <h2>🪪 Facial Recognition</h2>
-        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">
-            Position your face within the frame and capture to authorize the transaction.
-        </p>
-
-        <div style="border-radius: 12px; overflow: hidden; border: 2px solid var(--border); margin-bottom: 20px;">
-            <video id="face-video" autoplay playsinline muted style="width: 100%; display: block; background: #000;"></video>
-        </div>
-        <canvas id="face-canvas" style="display:none;"></canvas>
-
-        <button class="btn btn-primary" id="captureBtn" style="margin-bottom: 12px;" disabled>
-            Capture & Authorize
-        </button>
-
-        <button class="btn btn-outline" id="backToOtpBtn">
-            ← Return to Passcode
-        </button>
-
-        <div id="faceAlert" class="alert"></div>
     </div>
 </div>
 

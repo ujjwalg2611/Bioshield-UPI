@@ -54,8 +54,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         }
 
         if (risk.decision === 'OTP_REQUIRED') {
-            showAlert('High variance detected. Initiating secondary protocol (OTP).', 'warn');
-            setTimeout(() => location.href = '/otp', 1600); // Assuming you build an OTP page later
+            showAlert('Typing variance noted. Payments may need an OTP.', 'warn');
+            setTimeout(() => location.href = '/dashboard', 1600);
             return;
         }
 

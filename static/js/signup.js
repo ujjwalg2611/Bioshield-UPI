@@ -114,6 +114,7 @@ document.getElementById('signupForm').addEventListener('submit', async (e) => {
         const data = await BioShieldAPI.signup({
             full_name: document.getElementById('full_name').value.trim(),
             email: document.getElementById('email').value.trim(),
+            phone: document.getElementById('phone').value.trim(),
             password: pw
         });
 
