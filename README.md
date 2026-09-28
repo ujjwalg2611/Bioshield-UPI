@@ -43,10 +43,11 @@ See `.env.example` for the full list of optional environment variables (blockcha
 | `/api/login` | POST | ✗ | Login + biometric check |
 | `/api/enroll` | POST | ✓ | Submit keystroke samples |
 | `/api/test` | POST | ✓ | Test recognition |
-| `/api/payment/initiate` | POST | ✓ | Validate transfer, open a pending payment (stage FACE, or PIN if no face enrolled) |
-| `/api/payment/face` | POST | ✓ | Step 1: DeepFace match to enrolled photo. Match pays; mismatch moves to PIN |
-| `/api/payment/pin` | POST | ✓ | Step 2: Authorization PIN + typing-rhythm check. Rhythm ok pays; mismatch sends OTP |
-| `/api/payment/otp` | POST | ✓ | Step 3: OTP sent to the registered mobile number |
+| `/api/payment/initiate` | POST | ✓ | Validate transfer, open a pending payment (stage PIN) |
+| `/api/payment/pin` | POST | ✓ | Authorization PIN + typing rhythm. Rhythm ok pays; mismatch opens step-up |
+| `/api/payment/face` | POST | ✓ | Step-up A: DeepFace match to enrolled photo |
+| `/api/payment/otp/send` | POST | ✓ | Step-up B: send OTP to the registered mobile (also resend) |
+| `/api/payment/otp` | POST | ✓ | Verify the OTP |
 | `/api/pin/setup` | POST | ✓ | One-time PIN issue for accounts created before PINs existed |
 | `/api/phone/setup` | POST | ✓ | Add a mobile number to an older account (only while none is on file) |
 | `/api/risk-history` | GET | ✓ | Dashboard data |
@@ -57,18 +58,12 @@ See `.env.example` for the full list of optional environment variables (blockcha
 ## Payment Authentication Flow
 
 ```
-Face match ──ok──────────────────────────────► paid
-   │ mismatch
-   ▼
-Authorization PIN (set at signup) ──wrong ×3──► cancelled
+Authorization PIN (typed naturally) ──wrong ×3 (or ×5 account-wide → 15 min lock)──► cancelled
    │ correct
-   ├─ typing rhythm matches ────────────────► paid
-   └─ typing rhythm mismatch
-        ▼
-     OTP to registered mobile ──wrong ×3────► cancelled
-        │ correct
-        ▼
-      paid
+   ├─ typing rhythm matches ─────────────────────────────► paid   (fast path, no camera)
+   └─ typing rhythm mismatch → choose one:
+        ├─ Face match to profile photo ──ok──► paid   (3 misses disables this option)
+        └─ OTP to registered mobile ──ok──► paid      (wrong ×3 → cancelled)
 ```
 
 The server keeps the current step on the payment record and each endpoint only accepts a payment at its own step, so a client cannot skip ahead. Amount and recipient are read from the stored record, and each payment resolves once. OTP delivery: SMS via Twilio when `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM` are set; otherwise email via SMTP; otherwise the server log (dev only).

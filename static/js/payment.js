@@ -1,13 +1,15 @@
 // ── Auth guard ──
 if (!BioShieldAPI.getToken()) location.href = '/login';
 
-// Flow: Face ID first -> (face fails) Authorization PIN -> (typing rhythm fails) OTP.
+// Flow: PIN (typed naturally) -> if typing rhythm matches, paid.
+// If it doesn't: choose Face match OR an OTP sent to the registered mobile.
 // The server owns the state machine; this file only reacts to the `status` it returns.
 
 let pendingEventId = null;
-let pendingAmount  = 0;
+let pendingAmount = 0;
 let pendingRecipient = '';
-let cameraStream   = null;
+let cameraStream = null;
+let lastOptions = ['OTP'];
 const capture = new KeystrokeCapture({ minKeys: 4 });
 
 const $ = (id) => document.getElementById(id);
@@ -38,23 +40,26 @@ function showModal(id) {
 function hideModal(id) {
   const m = $(id);
   m.classList.remove('show');
-  setTimeout(() => { m.style.display = 'none'; }, 300);
+  setTimeout(() => { if (!m.classList.contains('show')) m.style.display = 'none'; }, 300);
 }
 function stopCamera() {
   if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
   cameraStream = null;
 }
-function resetFlow() {
-  pendingEventId = null;
+function clearPin() {
   capture.reset();
   pinInput.value = '';
   hudEl.style.display = 'none';
+}
+function resetFlow() {
+  pendingEventId = null;
+  clearPin();
   document.querySelectorAll('.otp-digit').forEach(i => { i.value = ''; });
   $('paymentForm').reset();
 }
 function closeAllModals() {
   stopCamera();
-  ['faceModal', 'pinModal', 'otpModal'].forEach(hideModal);
+  ['stepupModal', 'faceModal', 'otpModal'].forEach(hideModal);
 }
 function cancelFlow(msg) {
   closeAllModals();
@@ -68,7 +73,7 @@ function succeed(msg) {
   resetFlow();
 }
 
-// ── Keystroke capture lives on the PIN field (only used in the PIN step) ──
+// ── Keystroke capture on the PIN field ──
 capture.attach(pinInput);
 capture.onUpdate = () => {
   if (hudEl.style.display !== 'block') hudEl.style.display = 'block';
@@ -78,37 +83,42 @@ capture.onUpdate = () => {
 // ── Step router: react to whatever the server says comes next ──
 function handleStep(data) {
   if (data.event_id) pendingEventId = data.event_id;
+  if (data.options) lastOptions = data.options;
   $('alertBox').classList.remove('show');
 
-  if (data.status === 'FACE_REQUIRED')      openFaceStep();
-  else if (data.status === 'PIN_REQUIRED')  { stopCamera(); hideModal('faceModal'); openPinStep(data.message); }
-  else if (data.status === 'OTP_REQUIRED')  { hideModal('pinModal'); openOtpStep(data); }
+  if (data.status === 'STEPUP_REQUIRED') { hideModal('faceModal'); hideModal('otpModal'); stopCamera(); openStepup(data.message); }
+  else if (data.status === 'OTP_REQUIRED') { hideModal('stepupModal'); openOtpStep(data); }
   else if (data.status === 'SUCCESS') {
     const how = data.auth_method === 'FACE_ID'
-      ? `Identity confirmed (${Math.round((data.confidence || 0) * 100)}% face match). `
+      ? `Face confirmed (${Math.round((data.confidence || 0) * 100)}% match). `
       : data.auth_method === 'OTP' ? 'Code accepted. ' : 'PIN and typing pattern accepted. ';
     succeed(`${how}₹${pendingAmount.toFixed(2)} sent to ${pendingRecipient}. TXN: ${data.txn_id}`);
   }
 }
 
-// ── Step 0: start payment ──
+// ── Submit: open payment, then check the PIN straight away ──
 $('paymentForm').addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (pinInput.value.length !== 6) { showAlert('alertBox', 'PIN must be 6 digits.', 'error'); return; }
+
   const btn = $('payBtn');
-  $('payBtnText').textContent = 'Starting...';
+  $('payBtnText').textContent = 'Verifying...';
   $('paySpinner').style.display = 'inline-block';
   btn.disabled = true;
 
   pendingAmount = parseFloat($('amount').value);
   pendingRecipient = $('recipient_upi').value.trim();
+  const pin = pinInput.value;
+  const keystrokes = capture.getData();
 
   try {
-    handleStep(await BioShieldAPI.paymentInitiate({
-      recipient_upi: pendingRecipient,
-      amount: pendingAmount
-    }));
+    const started = await BioShieldAPI.paymentInitiate({ recipient_upi: pendingRecipient, amount: pendingAmount });
+    pendingEventId = started.event_id;
+    handleStep(await BioShieldAPI.paymentPin({ event_id: pendingEventId, pin, keystroke_data: keystrokes }));
   } catch (err) {
-    showAlert('alertBox', err.error || 'Transaction failed.', 'error');
+    if (err.terminated) cancelFlow(err.error);
+    else showAlert('alertBox', err.error || 'Transaction failed.', 'error');
+    clearPin();
   } finally {
     btn.disabled = false;
     $('payBtnText').textContent = 'Authorize Transfer';
@@ -116,8 +126,35 @@ $('paymentForm').addEventListener('submit', async (e) => {
   }
 });
 
-// ── Step 1: face ──
-async function openFaceStep() {
+// ── Step-up chooser (only after a typing-rhythm mismatch) ──
+function openStepup(msg) {
+  clearPin();
+  $('stepupAlert').classList.remove('show');
+  $('stepupMsg').textContent = msg || "Typing pattern didn't match your profile.";
+  $('chooseFaceBtn').style.display = lastOptions.includes('FACE') ? 'block' : 'none';
+  showModal('stepupModal');
+}
+
+async function sendOtp(fromStepup) {
+  const text = $('chooseOtpText'), spin = $('chooseOtpSpinner');
+  text.textContent = 'Sending...'; spin.style.display = 'inline-block';
+  $('chooseOtpBtn').disabled = true; $('resendOtpBtn').disabled = true;
+  try {
+    handleStep(await BioShieldAPI.paymentOtpSend({ event_id: pendingEventId }));
+  } catch (err) {
+    showAlert(fromStepup ? 'stepupAlert' : 'otpAlert', err.error || 'Could not send the code.', 'error');
+  } finally {
+    text.textContent = 'Send code to my mobile'; spin.style.display = 'none';
+    $('chooseOtpBtn').disabled = false; $('resendOtpBtn').disabled = false;
+  }
+}
+$('chooseOtpBtn').addEventListener('click', () => sendOtp(true));
+$('resendOtpBtn').addEventListener('click', () => sendOtp(false));
+$('cancelStepupBtn').addEventListener('click', () => cancelFlow('Transfer cancelled.'));
+
+// ── Option A: face ──
+$('chooseFaceBtn').addEventListener('click', async () => {
+  hideModal('stepupModal');
   showModal('faceModal');
   $('faceAlert').classList.remove('show');
   const capBtn = $('captureBtn');
@@ -128,17 +165,16 @@ async function openFaceStep() {
     $('face-video').srcObject = cameraStream;
     capBtn.disabled = false;
   } catch {
-    showAlert('faceAlert', 'Camera unavailable. Cancel and try again, or check browser permissions.', 'error');
+    showAlert('faceAlert', 'Camera unavailable. Go back and use the mobile code instead.', 'error');
   }
-}
+});
 
 $('captureBtn').addEventListener('click', async () => {
   const btn = $('captureBtn');
-  btn.textContent = 'Matching...';
+  btn.textContent = 'Matching (can take a few seconds)...';
   btn.disabled = true;
 
-  const video = $('face-video');
-  const canvas = $('face-canvas');
+  const video = $('face-video'), canvas = $('face-canvas');
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   canvas.getContext('2d').drawImage(video, 0, 0);
@@ -149,66 +185,23 @@ $('captureBtn').addEventListener('click', async () => {
   } catch (err) {
     // e.g. "No face detected" - camera stays on so they can retry
     showAlert('faceAlert', err.error || 'Face verification failed.', 'error');
+  } finally {
     btn.textContent = 'Capture & Authorize';
     btn.disabled = false;
   }
 });
+$('backFromFaceBtn').addEventListener('click', () => { stopCamera(); hideModal('faceModal'); openStepup(); });
 
-$('cancelFaceBtn').addEventListener('click', () => cancelFlow('Transfer cancelled.'));
-
-// ── Step 2: PIN fallback (+ typing rhythm check) ──
-function openPinStep(msg) {
-  capture.reset();
-  pinInput.value = '';
-  hudEl.style.display = 'none';
-  $('pinAlert').classList.remove('show');
-  $('pinMsg').textContent = msg || 'Enter your Authorization PIN.';
-  showModal('pinModal');
-  setTimeout(() => pinInput.focus(), 350);
-}
-
-async function submitPin() {
-  if (pinInput.value.length !== 6) { showAlert('pinAlert', 'PIN must be 6 digits.', 'error'); return; }
-  $('pinBtnText').textContent = 'Verifying...';
-  $('pinSpinner').style.display = 'inline-block';
-  $('pinSubmitBtn').disabled = true;
-
-  try {
-    handleStep(await BioShieldAPI.paymentPin({
-      event_id: pendingEventId,
-      pin: pinInput.value,
-      keystroke_data: capture.getData()
-    }));
-  } catch (err) {
-    if (err.terminated) { cancelFlow(err.error); }
-    else {
-      showAlert('pinAlert', err.error || 'PIN verification failed.', 'error');
-      capture.reset();
-      pinInput.value = '';
-      hudEl.style.display = 'none';
-      pinInput.focus();
-    }
-  } finally {
-    $('pinBtnText').textContent = 'Verify PIN';
-    $('pinSpinner').style.display = 'none';
-    $('pinSubmitBtn').disabled = false;
-  }
-}
-$('pinSubmitBtn').addEventListener('click', submitPin);
-pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitPin(); } });
-$('cancelPinBtn').addEventListener('click', () => cancelFlow('Transfer cancelled.'));
-
-// ── Step 3: OTP to registered mobile (typing rhythm didn't match) ──
+// ── Option B: OTP to registered mobile ──
 function openOtpStep(data) {
   document.querySelectorAll('.otp-digit').forEach(i => { i.value = ''; });
   $('otpAlert').classList.remove('show');
 
-  const where = data.channel === 'SMS' && data.sent_to
+  $('otpMsg').textContent = data.channel === 'SMS' && data.sent_to
     ? `Enter the code sent by SMS to ${data.sent_to}.`
     : data.channel === 'EMAIL'
       ? 'SMS is not configured on this server, so the code was emailed to you.'
       : 'SMS is not configured on this server; the code was written to the server log.';
-  $('otpMsg').textContent = `Your typing pattern didn't match your profile. ${where}`;
 
   $('demoOtpBox').style.display = data.otp ? 'block' : 'none';
   if (data.otp) $('demoOtp').textContent = data.otp;
@@ -233,7 +226,7 @@ $('otpSubmitBtn').addEventListener('click', async () => {
   try {
     handleStep(await BioShieldAPI.paymentOtp({ event_id: pendingEventId, otp: digits }));
   } catch (err) {
-    if (err.terminated) { cancelFlow(err.error); }
+    if (err.terminated) cancelFlow(err.error);
     else {
       showAlert('otpAlert', err.error || 'Invalid code.', 'error');
       document.querySelectorAll('.otp-digit').forEach(i => { i.value = ''; });
@@ -245,4 +238,4 @@ $('otpSubmitBtn').addEventListener('click', async () => {
     $('otpSubmitBtn').disabled = false;
   }
 });
-$('cancelOtpBtn').addEventListener('click', () => cancelFlow('Transfer cancelled.'));
+$('backFromOtpBtn').addEventListener('click', () => { hideModal('otpModal'); openStepup(); });

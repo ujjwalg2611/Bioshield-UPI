@@ -250,6 +250,7 @@ const BioShieldAPI = {
   paymentInitiate(p)   { return this.request('/api/payment/initiate', 'POST', p); },
   paymentFace(p)       { return this.request('/api/payment/face',     'POST', p); },
   paymentPin(p)        { return this.request('/api/payment/pin',      'POST', p); },
+  paymentOtpSend(p)    { return this.request('/api/payment/otp/send', 'POST', p); },
   paymentOtp(p)        { return this.request('/api/payment/otp',      'POST', p); },
   riskHistory()        { return this.request('/api/risk-history'); },
 };

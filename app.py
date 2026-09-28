@@ -264,7 +264,10 @@ def generate_unique_pin() -> str:
     return ''.join(secrets.choice(string.digits) for _ in range(6))
 
 
-PIN_MAX_ATTEMPTS = 3
+PIN_MAX_ATTEMPTS = 3          # per payment attempt
+PIN_LOCKOUT_AFTER = 5         # consecutive wrong PINs, account-wide
+PIN_LOCKOUT_FOR = timedelta(minutes=15)
+FACE_MAX_ATTEMPTS = 3
 OTP_MAX_ATTEMPTS = 3
 OTP_TTL = timedelta(minutes=5)
 PAYMENT_TTL = timedelta(minutes=10)
@@ -284,7 +287,7 @@ def mask_phone(phone):
     return phone[:3] + '*' * (len(phone) - 7) + phone[-4:]
 
 
-def get_pending_event(user_id: int, event_id, stage: str):
+def get_pending_event(user_id: int, event_id, stage):
     """Row-locked fetch of the caller's own unresolved payment, only if it is
     currently at `stage`. Amount/recipient always come from this stored event
     (never the client), so a step-up endpoint can only finish a payment that
@@ -296,7 +299,8 @@ def get_pending_event(user_id: int, event_id, stage: str):
     event = (db.session.query(RiskEvent).filter_by(id=event_id)
              .with_for_update().first())
     if (not event or event.user_id != user_id or event.event_type != 'PAYMENT'
-            or event.resolution is not None or event.stage != stage):
+            or event.resolution is not None
+            or event.stage not in ((stage,) if isinstance(stage, str) else stage)):
         return None
     if event.created_at < datetime.utcnow() - PAYMENT_TTL:
         event.resolution = 'EXPIRED'
@@ -679,13 +683,22 @@ def test_recognition():
 
 
 
+def step_up_options(user_id: int, event) -> list:
+    """What the caller may use after a typing-rhythm mismatch. OTP is always
+    offered; face only if a profile photo is enrolled and attempts remain."""
+    options = ['OTP']
+    has_face = os.path.exists(os.path.join(FACE_STORAGE_DIR, f"user_{user_id}_ref.enc"))
+    if has_face and (event.face_attempts or 0) < FACE_MAX_ATTEMPTS:
+        options.insert(0, 'FACE')
+    return options
+
+
 @app.route('/api/payment/initiate', methods=['POST'])
 @require_auth
 @limiter.limit("20 per minute")
 def payment_initiate():
-    """Step 0: validate the transfer and open a pending payment. Nothing moves
-    until the caller clears FACE (or PIN fallback) and, if typing rhythm
-    mismatches, OTP."""
+    """Step 0: validate the transfer and open a pending payment at stage PIN.
+    Nothing moves until the PIN (and, on a rhythm mismatch, a step-up) clears."""
     data = request.get_json() or {}
     recipient_upi = str(data.get('recipient_upi', '')).strip()
     try:
@@ -708,32 +721,103 @@ def payment_initiate():
     RiskEvent.query.filter_by(user_id=user.id, event_type='PAYMENT', resolution=None) \
         .update({'resolution': 'SUPERSEDED'})
 
-    has_face = os.path.exists(os.path.join(FACE_STORAGE_DIR, f"user_{user.id}_ref.enc"))
     event = RiskEvent(
         user_id=user.id, event_type='PAYMENT', risk_level='PENDING', risk_score=0.0,
-        amount=amount, recipient=recipient_upi,
-        stage='FACE' if has_face else 'PIN', pin_attempts=0, otp_attempts=0
+        amount=amount, recipient=recipient_upi, stage='PIN',
+        pin_attempts=0, face_attempts=0, otp_attempts=0
     )
     db.session.add(event)
     db.session.commit()
+    return jsonify({'status': 'PIN_REQUIRED', 'event_id': event.id})
 
-    if has_face:
-        return jsonify({'status': 'FACE_REQUIRED', 'event_id': event.id,
-                        'message': 'Look at the camera to verify your face.'})
-    return jsonify({'status': 'PIN_REQUIRED', 'event_id': event.id,
-                    'message': 'No enrolled face found. Enter your Authorization PIN.'})
+
+@app.route('/api/payment/pin', methods=['POST'])
+@require_auth
+@limiter.limit("10 per minute")
+def payment_pin():
+    """Step 1: Authorization PIN set at signup + typing-rhythm check on how it
+    was typed. Rhythm matches -> paid (fast path, no camera). Mismatch ->
+    step-up: the caller picks face match or an OTP to their registered mobile."""
+    data = request.get_json() or {}
+    event = get_pending_event(request.user_id, data.get('event_id'), 'PIN')
+    if not event:
+        return jsonify({'error': 'No pending payment to verify'}), 400
+
+    user = db.session.get(User, request.user_id)
+    if not user.pin_hash:
+        return jsonify({'error': 'No Authorization PIN is set up on this account.'}), 400
+
+    if user.pin_locked_until and user.pin_locked_until > datetime.utcnow():
+        mins = int((user.pin_locked_until - datetime.utcnow()).total_seconds() // 60) + 1
+        event.resolution = 'FAILED_PIN'
+        db.session.commit()
+        return jsonify({'error': f'Too many wrong PINs. Payments are locked for {mins} more minute(s).',
+                        'terminated': True}), 429
+
+    pin = str(data.get('pin', ''))
+    if not pin or not bcrypt.checkpw(pin.encode(), user.pin_hash.encode()):
+        event.pin_attempts = (event.pin_attempts or 0) + 1
+        user.pin_failed_attempts = (user.pin_failed_attempts or 0) + 1
+        if user.pin_failed_attempts >= PIN_LOCKOUT_AFTER:
+            user.pin_failed_attempts = 0
+            user.pin_locked_until = datetime.utcnow() + PIN_LOCKOUT_FOR
+            event.resolution = 'FAILED_PIN'
+            db.session.commit()
+            return jsonify({'error': 'Too many wrong PINs. Payments are locked for 15 minutes.',
+                            'terminated': True}), 403
+        left = PIN_MAX_ATTEMPTS - event.pin_attempts
+        if left <= 0:
+            event.resolution = 'FAILED_PIN'
+            db.session.commit()
+            return jsonify({'error': 'Too many incorrect PIN attempts. Transaction cancelled.',
+                            'terminated': True}), 403
+        db.session.commit()
+        return jsonify({'error': f'Incorrect Authorization PIN. {left} attempt(s) left.',
+                        'attempts_left': left}), 401
+
+    user.pin_failed_attempts = 0
+    features = extract_features(data.get('keystroke_data', {}))
+    profile = KeystrokeProfile.query.filter_by(user_id=user.id).first()
+    risk = predict_risk(features, profile)
+    event.risk_score = risk['score']
+    event.features_snapshot = json.dumps(features)
+
+    if risk['decision'] == 'ALLOW':
+        event.risk_level = 'ALLOW'
+        txn, user = finalize_payment(user.id, event, 'PIN_BIOMETRIC', 'PASSED_PIN', 'ALLOW')
+        if not txn:
+            return jsonify({'error': 'Insufficient balance'}), 400
+        if profile:
+            update_profile_moving_average(profile, features)
+            db.session.commit()
+        return success_response(txn, user, 'PIN_BIOMETRIC', risk_score=round(risk['score'], 3))
+
+    # PIN correct, rhythm off -> second factor of the caller's choice.
+    event.risk_level = 'OTP_REQUIRED'
+    event.stage = 'STEPUP'
+    db.session.commit()
+    return jsonify({
+        'status': 'STEPUP_REQUIRED', 'event_id': event.id,
+        'risk_score': round(risk['score'], 3),
+        'options': step_up_options(user.id, event),
+        'message': "Typing pattern didn't match your profile. Verify with your face or get a code on your registered mobile."
+    })
 
 
 @app.route('/api/payment/face', methods=['POST'])
 @require_auth
 @limiter.limit("5 per minute")
 def payment_face():
-    """Step 1: face match against the enrolled profile photo. Match -> paid.
-    Genuine mismatch -> fall back to the Authorization PIN."""
+    """Step-up option A: live face vs the enrolled profile photo. Only reachable
+    after a rhythm mismatch. Mismatch keeps the other option (OTP) open."""
     data = request.get_json() or {}
-    event = get_pending_event(request.user_id, data.get('event_id'), 'FACE')
+    event = get_pending_event(request.user_id, data.get('event_id'), ('STEPUP', 'OTP'))
     if not event:
         return jsonify({'error': 'No pending payment to verify'}), 400
+    if (event.face_attempts or 0) >= FACE_MAX_ATTEMPTS:
+        return jsonify({'status': 'STEPUP_REQUIRED', 'event_id': event.id,
+                        'options': step_up_options(request.user_id, event),
+                        'message': 'Too many face attempts. Use the code sent to your mobile.'})
 
     live_path_enc = os.path.join(FACE_STORAGE_DIR, f"temp_{request.user_id}_live.enc")
     live_plain = os.path.join(FACE_STORAGE_DIR, f"temp_{request.user_id}_live_plain.jpg")
@@ -754,10 +838,9 @@ def payment_face():
 
     if not os.path.exists(ref_path_enc):
         scrub()
-        event.stage = 'PIN'
-        db.session.commit()
-        return jsonify({'status': 'PIN_REQUIRED', 'face_matched': False, 'event_id': event.id,
-                        'message': 'No enrolled face found. Enter your Authorization PIN.'})
+        return jsonify({'status': 'STEPUP_REQUIRED', 'event_id': event.id,
+                        'options': step_up_options(request.user_id, event),
+                        'message': 'No enrolled face found. Use the code sent to your mobile.'})
 
     try:
         read_encrypted_image_to_temp(live_path_enc, live_plain)
@@ -778,78 +861,42 @@ def payment_face():
         scrub()
 
     if not face_matched:
-        event.stage = 'PIN'
+        event.face_attempts = (event.face_attempts or 0) + 1
         db.session.commit()
-        return jsonify({'status': 'PIN_REQUIRED', 'face_matched': False, 'event_id': event.id,
-                        'message': 'Face did not match. Enter your Authorization PIN instead.'})
+        return jsonify({'status': 'STEPUP_REQUIRED', 'event_id': event.id,
+                        'options': step_up_options(request.user_id, event),
+                        'message': 'Face did not match. Try again or get a code on your mobile.'})
 
-    event.risk_level = 'FACE_VERIFIED'
     txn, user = finalize_payment(request.user_id, event, 'FACE_ID', 'PASSED_FACE', 'FACE_VERIFIED')
     if not txn:
         return jsonify({'error': 'Insufficient balance'}), 400
     return success_response(txn, user, 'FACE_ID', confidence=round(confidence, 3))
 
 
-@app.route('/api/payment/pin', methods=['POST'])
+@app.route('/api/payment/otp/send', methods=['POST'])
 @require_auth
-@limiter.limit("10 per minute")
-def payment_pin():
-    """Step 2 (fallback): Authorization PIN set at signup, plus typing-rhythm
-    check on how the PIN was typed. Rhythm matches -> paid. Rhythm mismatch
-    -> OTP to the registered mobile."""
+@limiter.limit("3 per minute")
+def payment_otp_send():
+    """Step-up option B: send a one-time code to the registered mobile. Also
+    serves as "resend". otp_attempts is deliberately NOT reset here, so
+    requesting new codes can't be used to get unlimited guesses."""
     data = request.get_json() or {}
-    event = get_pending_event(request.user_id, data.get('event_id'), 'PIN')
+    event = get_pending_event(request.user_id, data.get('event_id'), ('STEPUP', 'OTP'))
     if not event:
         return jsonify({'error': 'No pending payment to verify'}), 400
 
     user = db.session.get(User, request.user_id)
-    if not user.pin_hash:
-        return jsonify({'error': 'No Authorization PIN is set up on this account.'}), 400
-
-    pin = str(data.get('pin', ''))
-    if not pin or not bcrypt.checkpw(pin.encode(), user.pin_hash.encode()):
-        event.pin_attempts = (event.pin_attempts or 0) + 1
-        left = PIN_MAX_ATTEMPTS - event.pin_attempts
-        if left <= 0:
-            event.resolution = 'FAILED_PIN'
-            db.session.commit()
-            return jsonify({'error': 'Too many incorrect PIN attempts. Transaction cancelled.',
-                            'terminated': True}), 403
-        db.session.commit()
-        return jsonify({'error': f'Incorrect Authorization PIN. {left} attempt(s) left.',
-                        'attempts_left': left}), 401
-
-    features = extract_features(data.get('keystroke_data', {}))
-    profile = KeystrokeProfile.query.filter_by(user_id=user.id).first()
-    risk = predict_risk(features, profile)
-    event.risk_score = risk['score']
-    event.features_snapshot = json.dumps(features)
-
-    if risk['decision'] == 'ALLOW':
-        event.risk_level = 'ALLOW'
-        txn, user = finalize_payment(user.id, event, 'PIN_BIOMETRIC', 'PASSED_PIN', 'ALLOW')
-        if not txn:
-            return jsonify({'error': 'Insufficient balance'}), 400
-        if profile:
-            update_profile_moving_average(profile, features)
-            db.session.commit()
-        return success_response(txn, user, 'PIN_BIOMETRIC', risk_score=round(risk['score'], 3))
-
-    # PIN correct but typing rhythm doesn't match -> second factor: OTP.
     otp = ''.join(secrets.choice(string.digits) for _ in range(6))
-    event.risk_level = 'OTP_REQUIRED'
     event.stage = 'OTP'
     event.otp_hash = otp_digest(event.id, otp)
     event.otp_expires_at = datetime.utcnow() + OTP_TTL
-    event.otp_attempts = 0
     db.session.commit()
 
     channel = send_otp(user, otp)
     response = {
-        'status': 'OTP_REQUIRED', 'event_id': event.id,
-        'risk_score': round(risk['score'], 3), 'channel': channel,
+        'status': 'OTP_REQUIRED', 'event_id': event.id, 'channel': channel,
         'sent_to': mask_phone(user.phone) if (user.phone and channel == 'SMS') else None,
-        'message': 'Typing pattern mismatch. Enter the one-time code sent to your registered mobile number.'
+        'options': step_up_options(user.id, event)
     }
     if DEMO_MODE:
         response['otp'] = otp
@@ -861,16 +908,14 @@ def payment_pin():
 @require_auth
 @limiter.limit("10 per minute")
 def payment_otp():
-    """Step 3: one-time code sent to the registered mobile."""
+    """Verify the one-time code."""
     data = request.get_json() or {}
     event = get_pending_event(request.user_id, data.get('event_id'), 'OTP')
     if not event:
         return jsonify({'error': 'No pending payment to verify'}), 400
 
     if not event.otp_hash or not event.otp_expires_at or datetime.utcnow() > event.otp_expires_at:
-        event.resolution = 'EXPIRED'
-        db.session.commit()
-        return jsonify({'error': 'Code expired. Start the transfer again.', 'terminated': True}), 403
+        return jsonify({'error': 'Code expired. Request a new one.'}), 400
 
     otp = str(data.get('otp', ''))
     if not hmac.compare_digest(otp_digest(event.id, otp), event.otp_hash):
@@ -954,9 +999,12 @@ def run_light_migrations():
     ourselves. Idempotent; safe if two gunicorn workers race at startup."""
     from sqlalchemy import inspect, text
     wanted = {
-        'users': {'pin_hash': 'VARCHAR(255)', 'phone': 'VARCHAR(20)'},
+        'users': {'pin_hash': 'VARCHAR(255)', 'phone': 'VARCHAR(20)',
+                  'pin_failed_attempts': 'INTEGER DEFAULT 0',
+                  'pin_locked_until': 'TIMESTAMP'},
         'risk_events': {
             'stage': 'VARCHAR(10)', 'pin_attempts': 'INTEGER DEFAULT 0',
+            'face_attempts': 'INTEGER DEFAULT 0',
             'otp_hash': 'VARCHAR(64)', 'otp_expires_at': 'TIMESTAMP',
             'otp_attempts': 'INTEGER DEFAULT 0',
         },

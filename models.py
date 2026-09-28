@@ -12,6 +12,9 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     pin_hash = db.Column(db.String(255), nullable=True)
     phone = db.Column(db.String(20), nullable=True)
+    # Account-wide PIN brute-force guard (a new payment attempt can't reset it)
+    pin_failed_attempts = db.Column(db.Integer, default=0)
+    pin_locked_until = db.Column(db.DateTime, nullable=True)
     full_name = db.Column(db.String(255), nullable=False)
     upi_id = db.Column(db.String(100), unique=True, nullable=False)
     balance = db.Column(db.Float, default=10000.0)
@@ -86,10 +89,11 @@ class RiskEvent(db.Model):
     resolution = db.Column(db.String(50))                   
     amount = db.Column(db.Float)
     recipient = db.Column(db.String(100))
-    # Server-side payment state machine: FACE -> PIN -> OTP -> DONE.
+    # Server-side payment state machine: PIN -> STEPUP (face or OTP) -> DONE.
     # The client can never jump ahead; each endpoint checks the stage.
     stage = db.Column(db.String(10))
     pin_attempts = db.Column(db.Integer, default=0)
+    face_attempts = db.Column(db.Integer, default=0)
     otp_hash = db.Column(db.String(64))
     otp_expires_at = db.Column(db.DateTime)
     otp_attempts = db.Column(db.Integer, default=0)
