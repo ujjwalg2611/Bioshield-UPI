@@ -42,6 +42,10 @@ _db_url = os.environ.get('DATABASE_URL', 'sqlite:///bioshield.db')
 # 1.4+ requires the "postgresql://" scheme - rewrite it if needed.
 if _db_url.startswith('postgres://'):
     _db_url = _db_url.replace('postgres://', 'postgresql://', 1)
+# SQLAlchemy 2.1 changed the default "postgresql://" driver from psycopg2 to
+# psycopg (v3). We ship psycopg2-binary, so name the driver explicitly.
+if _db_url.startswith('postgresql://'):
+    _db_url = _db_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
