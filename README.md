@@ -85,6 +85,8 @@ score < 0.65  → OTP_REQUIRED
 score ≥ 0.65  → BLOCK
 ```
 
+Thresholds live in `app.py` (`ALLOW_THRESHOLD`, `BLOCK_THRESHOLD`) and are shared by login, `/api/test` and payments. In the payment flow, anything other than ALLOW opens step-up (face or OTP); set `BLOCK_ENFORCED=true` to make BLOCK cancel the payment instead.
+
 Profiles self-update after every successful payment via an exponential moving average (α = 0.15): `new_avg = 0.85 × old_avg + 0.15 × new_sample`, so the baseline adapts to natural typing drift over time.
 
 ---
@@ -115,6 +117,8 @@ bioshield/
 ├── app.py                  ← Flask server + all API routes + risk engine
 ├── models.py                ← SQLAlchemy models (User, KeystrokeProfile, RiskEvent, Transaction)
 ├── blockchain.py             ← web3.py wrapper for async on-chain notarization
+├── ml/                       ← evaluate.py (CMU benchmark), risk_model.py (Mahalanobis scorer)
+├── tests/                    ← pytest suite
 ├── contracts/
 │   └── BioShieldLedger.sol   ← Solidity contract (testnet notarization)
 ├── scripts/
@@ -132,3 +136,26 @@ bioshield/
     ├── payment.html
     └── dashboard.html
 ```
+
+
+---
+
+## ML: evaluation & alternative scorer
+
+`ml/evaluate.py` benchmarks detectors (the z-score heuristic, Manhattan, Mahalanobis, One-Class SVM, Isolation Forest) on the public CMU keystroke dataset using EER and FRR@1%FAR:
+
+```bash
+pip install -r requirements-dev.txt
+python -m ml.evaluate --csv DSL-StrongPasswordData.csv   # writes results/metrics.json
+```
+
+`ml/risk_model.py` is a per-user Mahalanobis scorer used at runtime. By default (`RISK_ENGINE=zscore`) it runs in shadow mode: both scores are stored in each payment's `features_snapshot`, so they can be compared before switching with `RISK_ENGINE=mahalanobis`. Its scores are not yet calibrated against the 0.35 / 0.65 thresholds.
+
+Results table: _not yet run — fill in from `results/metrics.json` after running the script._
+
+## Tests
+
+```bash
+python -m pytest -q tests
+```
+CI runs the same on every push (`.github/workflows/ci.yml`).

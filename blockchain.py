@@ -11,6 +11,8 @@ import json
 import hashlib
 import threading
 
+_tx_lock = threading.Lock()  # serialize nonce use across concurrent payments
+
 RPC_URL = os.environ.get('RPC_URL')
 PRIVATE_KEY = os.environ.get('PRIVATE_KEY')
 CONTRACT_ADDRESS = os.environ.get('CONTRACT_ADDRESS')
@@ -71,15 +73,16 @@ def notarize_async(txn_id, user_id, amount, recipient_upi, timestamp,
             w3, contract, account = _get_client()
             record_hash = _record_hash(txn_id, user_id, amount, recipient_upi, timestamp)
 
-            tx = contract.functions.notarize(txn_id, record_hash).build_transaction({
-                'from': account.address,
-                'nonce': w3.eth.get_transaction_count(account.address),
-                'gas': 200000,
-                'gasPrice': w3.eth.gas_price,
-            })
-            signed = account.sign_transaction(tx)
-            raw = getattr(signed, 'raw_transaction', None) or signed.rawTransaction
-            tx_hash = w3.eth.send_raw_transaction(raw)
+            with _tx_lock:
+                tx = contract.functions.notarize(txn_id, record_hash).build_transaction({
+                    'from': account.address,
+                    'nonce': w3.eth.get_transaction_count(account.address, 'pending'),
+                    'gas': 200000,
+                    'gasPrice': w3.eth.gas_price,
+                })
+                signed = account.sign_transaction(tx)
+                raw = getattr(signed, 'raw_transaction', None) or signed.rawTransaction
+                tx_hash = w3.eth.send_raw_transaction(raw)
             receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=180)
 
             on_done(receipt.status == 1, tx_hash.hex(), receipt.blockNumber, None)

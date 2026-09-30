@@ -158,7 +158,34 @@ def extract_features(keystroke_data: dict) -> dict:
     }
 
 
+def decision_for(score: float) -> str:
+    if score < ALLOW_THRESHOLD:
+        return 'ALLOW'
+    if score < BLOCK_THRESHOLD:
+        return 'OTP_REQUIRED'
+    return 'BLOCK'
+
+
 def predict_risk(features: dict, profile: KeystrokeProfile) -> dict:
+    """Dispatch to the configured engine. The z-score heuristic always runs;
+    with RISK_ENGINE=mahalanobis the ML scorer decides, and its score is
+    attached under 'shadow' either way so both can be compared offline."""
+    result = _predict_risk_zscore(features, profile)
+    try:
+        from ml.risk_model import score_sample
+        ml_score = score_sample(features, profile.get_samples() if profile else [])
+    except Exception:
+        ml_score = None
+    if ml_score is not None:
+        result['shadow'] = {'mahalanobis': round(ml_score, 4),
+                            'zscore': round(result['score'], 4)}
+        if RISK_ENGINE == 'mahalanobis':
+            result['score'] = ml_score
+            result['decision'] = decision_for(ml_score)
+    return result
+
+
+def _predict_risk_zscore(features: dict, profile: KeystrokeProfile) -> dict:
     if profile is None or profile.sample_count < 3:
         return {
             'decision': 'ALLOW',
@@ -197,14 +224,7 @@ def predict_risk(features: dict, profile: KeystrokeProfile) -> dict:
         'jitter_score': round(jitter_score, 3)
     }
 
-    if score < 0.35:
-        decision = 'ALLOW'
-    elif score < 0.65:
-        decision = 'OTP_REQUIRED'
-    else:
-        decision = 'BLOCK'
-
-    return {'decision': decision, 'score': score, 'details': details}
+    return {'decision': decision_for(score), 'score': score, 'details': details}
 
 
 def update_profile_moving_average(profile: KeystrokeProfile, features: dict, alpha: float = 0.15):
@@ -263,6 +283,15 @@ def generate_unique_pin() -> str:
     passphrase."""
     return ''.join(secrets.choice(string.digits) for _ in range(6))
 
+
+# Risk thresholds live in one place so /api/test, login and payments agree.
+ALLOW_THRESHOLD = 0.35
+BLOCK_THRESHOLD = 0.65
+# When true, a score >= BLOCK_THRESHOLD cancels the payment outright instead of
+# offering step-up (face/OTP). Off by default: step-up is the documented flow.
+BLOCK_ENFORCED = os.environ.get('BLOCK_ENFORCED', 'false').lower() == 'true'
+# zscore = original heuristic (default); mahalanobis = ml/risk_model.py.
+RISK_ENGINE = os.environ.get('RISK_ENGINE', 'zscore').lower()
 
 PIN_MAX_ATTEMPTS = 3          # per payment attempt
 PIN_LOCKOUT_AFTER = 5         # consecutive wrong PINs, account-wide
@@ -672,7 +701,7 @@ def test_recognition():
     features = extract_features(keystroke_data)
     risk = predict_risk(features, profile)
 
-    recognized = risk['score'] < 0.45
+    recognized = risk['score'] < ALLOW_THRESHOLD
     return jsonify({
         'result': 'Recognized' if recognized else 'Unrecognized',
         'risk_score': round(risk['score'], 3),
@@ -780,7 +809,15 @@ def payment_pin():
     profile = KeystrokeProfile.query.filter_by(user_id=user.id).first()
     risk = predict_risk(features, profile)
     event.risk_score = risk['score']
-    event.features_snapshot = json.dumps(features)
+    event.features_snapshot = json.dumps({**features, '_engine': RISK_ENGINE,
+                                          '_shadow': risk.get('shadow')})
+
+    if risk['decision'] == 'BLOCK' and BLOCK_ENFORCED:
+        event.risk_level = 'BLOCK'
+        event.resolution = 'BLOCKED'
+        db.session.commit()
+        return jsonify({'error': 'Typing pattern is very different from your profile. Payment blocked.',
+                        'terminated': True, 'risk_score': round(risk['score'], 3)}), 403
 
     if risk['decision'] == 'ALLOW':
         event.risk_level = 'ALLOW'

@@ -1,0 +1,12 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      # DeepFace/TensorFlow are imported lazily and not needed for the tests
+      - run: pip install flask==3.0.0 flask-sqlalchemy==3.1.1 flask-cors==4.0.1 flask-limiter==3.5.0 bcrypt==4.1.2 PyJWT==2.8.0 cryptography==42.0.5 python-dotenv numpy scipy pandas scikit-learn pytest
+      - run: python -m pytest -q tests
