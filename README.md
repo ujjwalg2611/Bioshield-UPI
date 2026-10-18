@@ -87,6 +87,8 @@ score ≥ 0.65  → BLOCK
 
 Thresholds live in `app.py` (`ALLOW_THRESHOLD`, `BLOCK_THRESHOLD`) and are shared by login, `/api/test` and payments. In the payment flow, anything other than ALLOW opens step-up (face or OTP); set `BLOCK_ENFORCED=true` to make BLOCK cancel the payment instead.
 
+**Cold start:** a user with fewer than 3 enrollment samples is stepped up (face/OTP) rather than allowed - the engine fails closed. Set `COLD_START_POLICY=allow` to restore the old behaviour. The weights above and the 0.35 / 0.65 thresholds are hand-chosen, not fitted to data; the evaluation below is how they should be tuned.
+
 Profiles self-update after every successful payment via an exponential moving average (α = 0.15): `new_avg = 0.85 × old_avg + 0.15 × new_sample`, so the baseline adapts to natural typing drift over time.
 
 ---
@@ -151,11 +153,45 @@ python -m ml.evaluate --csv DSL-StrongPasswordData.csv   # writes results/metric
 
 `ml/risk_model.py` is a per-user Mahalanobis scorer used at runtime. By default (`RISK_ENGINE=zscore`) it runs in shadow mode: both scores are stored in each payment's `features_snapshot`, so they can be compared before switching with `RISK_ENGINE=mahalanobis`. Its scores are not yet calibrated against the 0.35 / 0.65 thresholds.
 
-Results table: _not yet run — fill in from `results/metrics.json` after running the script._
+Which features matter? `ml/ablation.py` derives the app's aggregate features from the CMU per-key timings and re-runs the protocol with each feature dropped and used alone, for the Mahalanobis scorer and for the app's hand-set z-score weights:
+
+```bash
+python -m ml.ablation --csv DSL-StrongPasswordData.csv   # writes results/ablation.json
+```
+
+It cannot assess `backspace_rate` (CMU samples are error-free), and it measures the aggregates on an 11-key password, not live PIN sessions.
+
+Results table: _not yet run — fill in from `results/metrics.json` and `results/ablation.json` after running the scripts. No accuracy, FAR/FRR or fraud-reduction figure should be quoted for this project until they exist._
 
 ## Tests
 
 ```bash
 python -m pytest -q tests
 ```
-CI runs the same on every push (`.github/workflows/ci.yml`).
+CI runs the same on every push (`.github/workflows/ci.yml`). The suite covers feature extraction and the EMA update, the score-to-decision thresholds, the full payment state machine (PIN -> rhythm -> OTP, no skipping stages, replay and cross-user rejection, expiry, supersede), PIN/OTP/login lockouts, input validation, cold start, login error uniformity, and CORS. Keystroke timings in tests are synthetic: they verify control flow, not real-world biometric accuracy.
+
+## Configuration
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SECRET_KEY` | required in production | JWT signing and OTP HMAC. In dev a random per-process key is used |
+| `DATABASE_URL` | `sqlite:///bioshield.db` | Use PostgreSQL in production |
+| `FACE_ENCRYPTION_KEY` | random per process | Fernet key for face images at rest |
+| `RISK_ENGINE` | `zscore` | `mahalanobis` switches the decider (recalibrate thresholds first) |
+| `BLOCK_ENFORCED` | `false` | `true` cancels the payment at score >= 0.65 instead of stepping up |
+| `COLD_START_POLICY` | `stepup` | `allow` lets unenrolled users through the rhythm check |
+| `CORS_ORIGINS` | none (same-origin only) | Comma-separated allowed origins |
+| `DEMO_MODE` | `false` | Echoes OTPs in API responses - never in production |
+
+## Security notes & known limitations
+
+Controls: bcrypt for passwords and PINs; random server-issued PINs; account and PIN lockouts; per-route rate limits; OTPs stored as HMACs with a 5-minute TTL and a fixed attempt budget; face images encrypted at rest; server-side payment state machine with row locks; one bcrypt comparison per login even for unknown emails (no timing oracle).
+
+Known limitations (deliberately listed):
+- **Client-reported biometrics.** Keystroke timings come from the browser, so anyone with a valid token and PIN can post forged timings straight to the API. The rhythm check defends against a human impostor typing, not against scripted API abuse. Fixing this needs device attestation.
+- **No face liveness check.** A photo or replay could pass the DeepFace match.
+- **Account enumeration is reduced, not removed.** Signup still reveals duplicate emails (rate-limited) and only real accounts show the lockout message; closing this needs email verification.
+- **JWTs** are HS256, 24 h, with no revocation.
+- **Rate limiter** uses in-process memory; use Redis behind multiple workers.
+- **Face images** are stored on local disk, which is ephemeral on most free hosts.
+- **Thresholds and weights** are hand-set and uncalibrated (see ML section).

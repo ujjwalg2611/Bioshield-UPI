@@ -26,15 +26,19 @@ from models import db, User, KeystrokeProfile, RiskEvent, Transaction
 
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
-CORS(app, supports_credentials=True)
+# The UI is served by this same app and auth uses a Bearer header (no cookies), so
+# cross-origin access is disabled unless origins are listed explicitly.
+_cors_origins = [o.strip() for o in os.environ.get('CORS_ORIGINS', '').split(',') if o.strip()]
+CORS(app, origins=_cors_origins, supports_credentials=False)
 
 _secret_key = os.environ.get('SECRET_KEY')
 _is_production = os.environ.get('RENDER') is not None or os.environ.get('FLASK_ENV') == 'production'
 if not _secret_key:
     if _is_production:
         raise RuntimeError("SECRET_KEY environment variable is required in production and is not set.")
-    _secret_key = 'bioshield-secret-2024-change-in-prod'
-    print("[WARN] SECRET_KEY not set - using an insecure dev default. Set SECRET_KEY before deploying.")
+    _secret_key = secrets.token_hex(32)
+    print("[WARN] SECRET_KEY not set - using a random per-process key (tokens are invalidated on restart). "
+          "Set SECRET_KEY before deploying.")
 app.config['SECRET_KEY'] = _secret_key
 
 _db_url = os.environ.get('DATABASE_URL', 'sqlite:///bioshield.db')
@@ -95,6 +99,9 @@ def read_encrypted_image_to_temp(encrypted_path, temp_path):
     with open(temp_path, "wb") as fh:
         fh.write(plaintext)
 
+
+
+_DUMMY_HASH = bcrypt.hashpw(b'bioshield-dummy', bcrypt.gensalt()).decode()
 
 
 def generate_token(user_id: int) -> str:
@@ -187,12 +194,11 @@ def predict_risk(features: dict, profile: KeystrokeProfile) -> dict:
 
 def _predict_risk_zscore(features: dict, profile: KeystrokeProfile) -> dict:
     if profile is None or profile.sample_count < 3:
-        return {
-            'decision': 'ALLOW',
-            'score': 0.1,
-            'reason': 'Insufficient baseline – defaulting to ALLOW',
-            'details': {}
-        }
+        if COLD_START_POLICY == 'allow':
+            return {'decision': 'ALLOW', 'score': 0.1,
+                    'reason': 'Insufficient baseline - COLD_START_POLICY=allow', 'details': {}}
+        return {'decision': 'OTP_REQUIRED', 'score': 0.5,
+                'reason': 'Insufficient baseline - step-up required until enrolled', 'details': {}}
 
     def z_score(val, mean, std):
         if std < 1e-6:
@@ -292,6 +298,9 @@ BLOCK_THRESHOLD = 0.65
 BLOCK_ENFORCED = os.environ.get('BLOCK_ENFORCED', 'false').lower() == 'true'
 # zscore = original heuristic (default); mahalanobis = ml/risk_model.py.
 RISK_ENGINE = os.environ.get('RISK_ENGINE', 'zscore').lower()
+
+# No/too-little enrollment data: 'stepup' (default, fail closed) | 'allow' (old behaviour).
+COLD_START_POLICY = os.environ.get('COLD_START_POLICY', 'stepup').lower()
 
 PIN_MAX_ATTEMPTS = 3          # per payment attempt
 PIN_LOCKOUT_AFTER = 5         # consecutive wrong PINs, account-wide
@@ -495,8 +504,9 @@ def serve_static(filename):
 
 
 @app.route('/api/signup', methods=['POST'])
+@limiter.limit("5 per minute")
 def signup():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     email = data.get('email', '').strip().lower()
     password = data.get('password', '')
     full_name = data.get('full_name', '').strip()
@@ -576,7 +586,7 @@ def phone_setup():
 @app.route('/api/login', methods=['POST'])
 @limiter.limit("10 per minute")
 def login():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     email = data.get('email', '').strip().lower()
     password = data.get('password', '')
     keystroke_data = data.get('keystroke_data', {})
@@ -593,7 +603,10 @@ def login():
                      f'Try again in about {remaining} minute(s).'
         }), 423
 
-    if not user or not bcrypt.checkpw(password.encode(), user.password_hash.encode()):
+    # Always run one bcrypt comparison (against a dummy hash if the email is unknown) so
+    # response time doesn't reveal whether an account exists.
+    pw_ok = bcrypt.checkpw(password.encode(), (user.password_hash if user else _DUMMY_HASH).encode())
+    if not user or not pw_ok:
         if user:
             user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
             if user.failed_login_attempts >= 5:
@@ -856,10 +869,11 @@ def payment_face():
                         'options': step_up_options(request.user_id, event),
                         'message': 'Too many face attempts. Use the code sent to your mobile.'})
 
-    live_path_enc = os.path.join(FACE_STORAGE_DIR, f"temp_{request.user_id}_live.enc")
-    live_plain = os.path.join(FACE_STORAGE_DIR, f"temp_{request.user_id}_live_plain.jpg")
+    req_tag = uuid.uuid4().hex
+    live_path_enc = os.path.join(FACE_STORAGE_DIR, f"temp_{request.user_id}_{req_tag}_live.enc")
+    live_plain = os.path.join(FACE_STORAGE_DIR, f"temp_{request.user_id}_{req_tag}_live_plain.jpg")
     ref_path_enc = os.path.join(FACE_STORAGE_DIR, f"user_{request.user_id}_ref.enc")
-    ref_plain = os.path.join(FACE_STORAGE_DIR, f"temp_{request.user_id}_ref_plain.jpg")
+    ref_plain = os.path.join(FACE_STORAGE_DIR, f"temp_{request.user_id}_{req_tag}_ref_plain.jpg")
     temp_files = (live_path_enc, live_plain, ref_plain)
 
     def scrub():

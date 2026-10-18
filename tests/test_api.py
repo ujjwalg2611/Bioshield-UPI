@@ -48,5 +48,8 @@ def test_decision_thresholds_are_shared():
     assert appmod.decision_for(appmod.BLOCK_THRESHOLD) == 'BLOCK'
 
 
-def test_predict_risk_without_baseline_allows():
+def test_predict_risk_without_baseline_steps_up(monkeypatch):
+    # Fail closed by default: no enrollment data means a second factor, not a free pass.
+    assert appmod.predict_risk({}, None)['decision'] == 'OTP_REQUIRED'
+    monkeypatch.setattr(appmod, 'COLD_START_POLICY', 'allow')
     assert appmod.predict_risk({}, None)['decision'] == 'ALLOW'
